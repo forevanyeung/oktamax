@@ -90,6 +90,8 @@ export interface OAuthClientSettings {
   initiate_login_uri?: string;
   login_uri?: string;
   logo_uri?: string;
+  tos_uri?: string;
+  policy_uri?: string;
   client_uri?: string;
   consent_method?: string;
   issuer_mode?: string;

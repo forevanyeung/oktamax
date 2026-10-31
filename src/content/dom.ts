@@ -73,16 +73,19 @@ export const headingTexts = () =>
 
 /**
  * Find each API object on the page by its name (rule rows, zone rows, ...).
- * Objects with identical names are matched to on-page occurrences in order.
+ * `nameOf` may list several names when the console labels an object
+ * differently from the API; the first one on the page wins. Objects with
+ * identical names are matched to on-page occurrences in order.
  */
 export function findItems<T>(
   items: T[],
-  nameOf: (item: T) => string,
+  nameOf: (item: T) => string | string[],
 ): Array<{ item: T; anchor: Element; scope: Element }> {
   const index = textIndex();
   const used = new Map<string, number>();
   const found = items.flatMap((item) => {
-    const name = normalize(nameOf(item));
+    const names = [nameOf(item)].flat().map(normalize);
+    const name = names.find((n) => index.has(n)) ?? names[0]!;
     const n = used.get(name) ?? 0;
     used.set(name, n + 1);
     const anchor = index.get(name)?.[n];
@@ -103,10 +106,20 @@ const looksLikeEdit = (el: Element) => {
   );
 };
 
-/** Does Okta already show an Edit control in this part of the page? */
+// Collapsed "Actions ▾" menus keep their items in the DOM but hidden.
+const MENU = '.dropdown, .okta-dropdown-list, [role="menu"]';
+
+/** Visible, or an item of an "Actions" menu whose toggle is visible. */
+const isReachable = (el: Element) => {
+  if (isVisible(el)) return true;
+  const menu = el.closest(MENU);
+  return menu !== null && isVisible(menu.closest('.dropdown') ?? menu);
+};
+
+/** Does Okta already offer an Edit control in this part of the page? */
 export const hasEditControl = (scope: Element) =>
   [...scope.querySelectorAll(CONTROL)].some(
-    (el) => !isOwn(el) && isVisible(el) && looksLikeEdit(el),
+    (el) => !isOwn(el) && isReachable(el) && looksLikeEdit(el),
   );
 
 const EYE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">

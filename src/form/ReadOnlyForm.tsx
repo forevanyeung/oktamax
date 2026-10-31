@@ -47,14 +47,17 @@ const ReadOnlyField = ({ field }: { field: Field }): ReactElement => {
       );
 
     case 'checkbox':
+      // Odyssey's Checkbox is inline; consecutive ones would run together on one line.
       return (
-        <Checkbox
-          label={field.label}
-          hint={field.hint}
-          isChecked={field.checked}
-          onChange={noop}
-          isReadOnly
-        />
+        <div>
+          <Checkbox
+            label={field.label}
+            hint={field.hint}
+            isChecked={field.checked}
+            onChange={noop}
+            isReadOnly
+          />
+        </div>
       );
 
     case 'checkboxGroup':

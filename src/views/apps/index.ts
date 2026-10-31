@@ -4,7 +4,7 @@ import { get } from '../../okta/api';
 import type { App } from '../../okta/types';
 import type { ViewProvider } from '../types';
 import { appSettingsView } from './general';
-import { clientCredentialsView, oidcGeneralSettingsView, oidcLoginView } from './oidc';
+import { clientCredentialsView, oidcGeneralSettingsView } from './oidc';
 import { samlSettingsView } from './saml';
 import { signOnSettingsView } from './signOn';
 
@@ -36,7 +36,6 @@ function sectionsFor(app: App, tab: string) {
       title: 'View General Settings',
       view: oidcGeneralSettingsView,
     };
-    sections['Login'] = { title: 'View Login', view: oidcLoginView };
   }
   return sections;
 }

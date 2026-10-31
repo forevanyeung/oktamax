@@ -11,7 +11,7 @@ import { policySettingsView } from './policySettings';
 
 /** Admin console pages that show policies of a given type. */
 const POLICY_PAGES: Array<{ path: RegExp; type: PolicyType }> = [
-  { path: /^\/admin\/authn\/authentication-policies/, type: 'ACCESS_POLICY' },
+  { path: /^\/admin\/(authn\/)?authentication-policies/, type: 'ACCESS_POLICY' },
   { path: /^\/admin\/access\/policies/, type: 'OKTA_SIGN_ON' },
   { path: /^\/admin\/access\/(authenticators|authentication)/, type: 'PASSWORD' },
 ];

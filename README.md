@@ -21,21 +21,34 @@ Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, 
 
 `npm run dev` (`vp dev`) builds with hot reload. Load `dist/` once in the same way.
 
+### Staying up to date on another machine
+
+Dev mode loads the extension's code from the local dev server, so the browser picks up changes
+without reloading anything in `chrome://extensions`:
+
+```sh
+git clone https://github.com/forevanyeung/oktamax.git && cd oktamax
+npm ci
+npm run dev            # leave running; load dist/ as unpacked once
+```
+
+After that, `git pull` is enough: the dev server rebuilds and the extension reloads itself.
+
 The toolbar popup has one setting: **show view icons next to Edit buttons too**. Turn it on as a
 full admin to compare the view dialogs with the real edit dialogs side by side.
 
 ## What's covered
 
-| Admin console page                   | Edit dialog it mirrors                                                                                  |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Applications › app › General         | App Settings, SAML Settings (Edit SAML Integration), OIDC Client Credentials / General Settings / Login |
-| Applications › app › Sign On         | Settings (sign-on method, credentials details)                                                          |
-| Directory › Groups › Rules           | Edit Rule                                                                                               |
-| Security › Networks                  | Edit Zone (IP, dynamic, enhanced dynamic)                                                               |
-| Security › Authentication Policies   | Edit Rule (and policy name/description/groups)                                                          |
-| Security › Global Session Policy     | Edit Rule, Edit Policy                                                                                  |
-| Security › Authenticators › Password | Edit Rule, Edit Policy (complexity, age, lockout)                                                       |
-| Security › Authenticators            | Authenticator settings (rendered generically)                                                           |
+| Admin console page                   | Edit dialog it mirrors                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Applications › app › General         | App Settings, SAML Settings (Edit SAML Integration), OIDC Client Credentials / General Settings |
+| Applications › app › Sign On         | Settings (sign-on method, credentials details)                                                  |
+| Directory › Groups › Rules           | Edit Rule                                                                                       |
+| Security › Networks                  | Edit Zone (IP, dynamic, enhanced dynamic)                                                       |
+| Security › Authentication Policies   | Edit Rule (and policy name/description/groups)                                                  |
+| Security › Global Session Policy     | Edit Rule, Edit Policy                                                                          |
+| Security › Authenticators › Password | Edit Rule, Edit Policy (complexity, age, lockout)                                               |
+| Security › Authenticators            | Authenticator settings (rendered generically)                                                   |
 
 Every dialog also has a collapsed **API response (JSON)** section, for fields the form doesn't map.
 
@@ -75,8 +88,8 @@ doesn't depend on Okta's CSS classes. A **provider** (`src/views/types.ts`) does
    ]);
    ```
 
-A view icon is added unless the target's part of the page already has a visible Edit control
-(by text, `aria-label`, `title`, or `data-se`).
+A view icon is added unless the target's part of the page already has an Edit control (by text,
+`aria-label`, `title`, or `data-se`), either visible or inside a collapsed "Actions" menu.
 
 ### Adding a page
 
@@ -97,12 +110,38 @@ Branded Chrome no longer accepts `--load-extension`. The test checks that icons 
 where Edit is missing, that inputs/selects/checkboxes can't be changed, and that only `GET`
 requests are sent. Screenshots are saved to `e2e/*.png`.
 
+### Testing against a real org
+
+`e2e/okta.ts`, `e2e/seed.ts` and `e2e/live.ts` drive a real Okta org (an integrator org works).
+Put two accounts, a super admin and a read-only admin, both enrolled in Google Authenticator, in
+a git-ignored `.env` at the repo root:
+
+```sh
+OKTA_ADMIN_URL=https://<org>-admin.okta.com
+OKTA_USERNAME_ADMIN=...
+OKTA_PASSWORD_ADMIN='...'      # quote values that contain #
+OKTA_TOTP_SECRET_ADMIN=...     # base32 secret shown when enrolling Google Authenticator
+OKTA_USERNAME_READ=...
+OKTA_PASSWORD_READ='...'
+OKTA_TOTP_SECRET_READ=...
+```
+
+```sh
+npx vpx e2e/okta.ts            # check both accounts can sign in (sessions are kept in e2e/.profiles)
+npx vpx e2e/seed.ts            # as the super admin, create "Oktamax …" test objects (re-runnable)
+npm run build && npx vpx e2e/live.ts   # as the read-only admin, open every view; screenshots in e2e/live/
+```
+
+The seed only creates new objects, and scopes its policies to a test group or test app. Policy
+changes are Okta "protected actions", so the scripts answer the step-up pop-up with the admin's
+password and TOTP code.
+
 ## Known limitations
 
-- The field labels and their order follow Okta's edit dialogs as closely as possible, but they
-  were written without access to a live tenant. If a label, URL path (`POLICY_PAGES` in
-  `views/policies/index.ts`) or section heading differs in your org, it's a one-line change in
-  the matching view.
+- The field labels and their order follow Okta's edit dialogs as closely as possible and have been
+  checked against a live integrator org (console version 2026.42). Okta changes labels and URL
+  paths over time; if one differs (`POLICY_PAGES` in `views/policies/index.ts`, a section
+  heading, a label), it's a one-line change in the matching view.
 - On policy pages with no policy ID in the URL, the selected policy is worked out from the
   visible heading.
 - Authenticator settings and OIN app-specific settings vary per integration, so they are shown

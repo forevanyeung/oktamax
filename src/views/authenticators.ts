@@ -38,17 +38,24 @@ export async function authenticatorView(authenticator: Authenticator): Promise<F
   };
 }
 
+/** The console's labels where they differ from the API's `name`, by authenticator key. */
+const CONSOLE_NAMES: Record<string, string[]> = {
+  webauthn: ['Passkey (FIDO2 WebAuthn)', 'FIDO2 (WebAuthn)'],
+};
+
 export const authenticatorsProvider: ViewProvider = {
   name: 'Authenticators',
   matches: (url) => /^\/admin\/access\/(multifactor|authenticators)/.test(url.pathname),
   async findTargets() {
     const authenticators = await getAll<Authenticator>('/api/v1/authenticators');
-    return findItems(authenticators, (a) => a.name).map(({ item, anchor, scope }) => ({
-      key: `authenticator:${item.id}`,
-      title: `View ${item.name}`,
-      anchor,
-      scope,
-      load: () => authenticatorView(item),
-    }));
+    return findItems(authenticators, (a) => [a.name, ...(CONSOLE_NAMES[a.key] ?? [])]).map(
+      ({ item, anchor, scope }) => ({
+        key: `authenticator:${item.id}`,
+        title: `View ${item.name}`,
+        anchor,
+        scope,
+        load: () => authenticatorView(item),
+      }),
+    );
   },
 };
