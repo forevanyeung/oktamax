@@ -65,6 +65,14 @@ const isCanvas = ({ selectorText, style }: CSSStyleRule) =>
   /\b100d?vh\b/.test(style.height + style.minHeight) ||
   /\b(app-content|top-nav)\b/.test(style.gridArea);
 
+/**
+ * Fixed overrides for the Okta shell (an Odyssey web component): the left nav
+ * rail's divider gets the stronger border color, like input borders.
+ */
+const SHELL = `nav { border-inline-end-color: ${DARK.borderStrong} !important; }`;
+const isShell = (root: Document | ShadowRoot) =>
+  root instanceof ShadowRoot && root.host.localName.startsWith('odyssey-react-web-component');
+
 function declarations(rule: CSSStyleRule): string {
   const { style } = rule;
   let out = '';
@@ -308,6 +316,7 @@ export function startDarkMode(): DarkMode {
     }
     add(ATTRIBUTES, themed.attributesCss);
     if (root instanceof Document) add(FIXED, BASE);
+    else if (isShell(root)) add(FIXED, SHELL);
     for (const key of mirrors.keys()) if (!seen.has(key)) mirrors.delete(key);
 
     // Ours go last, after any sheets the page adopts itself.
