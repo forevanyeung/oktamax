@@ -98,7 +98,7 @@ export async function samlSettingsView(app: App): Promise<FormView> {
       ]),
       section('Attribute Statements', [
         table(
-          'Attribute Statements',
+          '',
           ['Name', 'Name format', 'Value'],
           statements
             .filter((a) => a.type === 'EXPRESSION')
@@ -111,7 +111,7 @@ export async function samlSettingsView(app: App): Promise<FormView> {
       ]),
       section('Group Attribute Statements', [
         table(
-          'Group Attribute Statements',
+          '',
           ['Name', 'Name format', 'Filter', 'Value'],
           statements
             .filter((a) => a.type === 'GROUP')

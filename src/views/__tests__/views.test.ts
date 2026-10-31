@@ -4,7 +4,7 @@ import type { Field, FormView } from '../../form/schema';
 import type { App, GroupRule, NetworkZone, PolicyRule } from '../../okta/types';
 import { samlSettingsView } from '../apps/saml';
 import { groupRuleView } from '../groupRules';
-import { networkZoneView } from '../networkZones';
+import { networkZoneView, zoneTitle } from '../networkZones';
 import { accessPolicyRuleView } from '../policies/accessPolicyRule';
 
 /** Answer Okta API GETs from a fixture map. */
@@ -28,7 +28,7 @@ const field = (view: FormView, label: string): Field | undefined =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe('networkZoneView', () => {
-  it('shows gateways and proxies for IP zones', () => {
+  it('shows gateways and proxies for IP zones like "Edit IP Zone"', () => {
     const zone: NetworkZone = {
       id: 'nzo1',
       name: 'Office',
@@ -42,6 +42,12 @@ describe('networkZoneView', () => {
       proxies: null,
     };
     const view = networkZoneView(zone);
+    expect(view.sections.flatMap((s) => s.fields.map((f) => f.label))).toEqual([
+      'Zone name',
+      'Block access from IPs matching conditions listed in this zone',
+      'Gateway IPs',
+      'Trusted proxy IPs',
+    ]);
     expect(field(view, 'Gateway IPs')).toMatchObject({
       type: 'textarea',
       value: '10.0.0.0/8\n1.1.1.1-1.1.1.5',
@@ -50,7 +56,46 @@ describe('networkZoneView', () => {
       field(view, 'Block access from IPs matching conditions listed in this zone'),
     ).toMatchObject({
       checked: false,
+      hint: 'WARNING: Selecting this option will prevent matching IPs from accessing Okta.',
     });
+    expect(zoneTitle(zone)).toBe('View IP Zone');
+  });
+
+  it('shows dynamic zones like "Edit Dynamic Zone"', () => {
+    const zone: NetworkZone = {
+      id: 'nzo3',
+      name: 'Countries',
+      type: 'DYNAMIC',
+      status: 'ACTIVE',
+      usage: 'BLOCKLIST',
+      proxyType: 'NotTorAnonymizer',
+      locations: [
+        { country: 'CA', region: 'CA-ON' },
+        { country: 'US', region: null },
+      ],
+      asns: ['64496'],
+    };
+    const view = networkZoneView(zone);
+    const fields = view.sections.flatMap((s) => s.fields);
+    expect(fields.map((f) => f.label)).toEqual([
+      'Zone name',
+      'Block access from IPs matching conditions listed in this zone',
+      'IP type',
+      'Locations',
+      '',
+      'ISP ASNs',
+    ]);
+    expect(field(view, 'IP type')).toMatchObject({ value: 'NotTorAnonymizer' });
+    expect(field(view, 'ISP ASNs')).toMatchObject({ type: 'textarea', value: '64496' });
+    const shown = (f: Field | undefined) =>
+      f?.type === 'inline'
+        ? f.fields.map((x) =>
+            x.type === 'select' ? x.options.find((o) => o.value === x.value)?.label : undefined,
+          )
+        : [];
+    expect(shown(fields[3])).toEqual(['Canada', 'Ontario']);
+    expect(shown(fields[4])).toEqual(['United States', 'State/Region (Optional)']);
+    expect(zoneTitle(zone)).toBe('View Dynamic Zone');
   });
 
   it('splits include/exclude for enhanced dynamic zones', () => {
@@ -64,36 +109,72 @@ describe('networkZoneView', () => {
       ipServiceCategories: { include: ['ALL_ANONYMIZERS'] },
     };
     const view = networkZoneView(zone);
-    expect(field(view, 'Include locations')).toMatchObject({ values: ['US - US-CA'] });
-    expect(field(view, 'Exclude locations')).toMatchObject({ values: ['CA'] });
+    expect(field(view, 'Include locations')).toMatchObject({
+      type: 'inline',
+      fields: [{ value: 'US' }, { value: 'US-CA' }],
+    });
+    expect(field(view, 'Exclude locations')).toMatchObject({
+      type: 'inline',
+      fields: [{ value: 'CA' }, { value: '' }],
+    });
+    expect(field(view, 'Include ASNs')).toMatchObject({ value: '15169' });
     expect(field(view, 'Include IP service categories')).toMatchObject({
       values: ['All anonymizers'],
     });
+    expect(zoneTitle(zone)).toBe('View Enhanced Dynamic Zone');
   });
 });
 
 describe('groupRuleView', () => {
-  it('resolves group names and excluded users', async () => {
+  const rule = (expression: string): GroupRule => ({
+    id: '0pr1',
+    name: 'Engineers',
+    status: 'ACTIVE',
+    conditions: {
+      expression: { value: expression },
+      people: { users: { exclude: ['00u1'] } },
+    },
+    actions: { assignUserToGroups: { groupIds: ['00g1'] } },
+    _embedded: { groupIdToGroupNameMap: { '00g1': 'Engineering' } },
+  });
+
+  it('shows a simple equality as a basic condition and resolves names', async () => {
     mockApi({
       '/api/v1/users/00u1': {
         id: '00u1',
         profile: { login: 'ada@example.com', firstName: 'Ada', lastName: 'L' },
       },
     });
-    const rule: GroupRule = {
-      id: '0pr1',
-      name: 'Engineers',
-      status: 'ACTIVE',
-      conditions: {
-        expression: { value: 'user.department=="Engineering"' },
-        people: { users: { exclude: ['00u1'] } },
-      },
-      actions: { assignUserToGroups: { groupIds: ['00g1'] } },
-      _embedded: { groupIdToGroupNameMap: { '00g1': 'Engineering' } },
-    };
-    const view = await groupRuleView(rule);
-    expect(field(view, 'Assign to')).toMatchObject({ values: ['Engineering'] });
-    expect(field(view, 'Users')).toMatchObject({ values: ['Ada L (ada@example.com)'] });
+    const view = await groupRuleView(rule('user.department=="Engineering"'));
+    expect(view.sections.flatMap((s) => s.fields.map((f) => f.label))).toEqual([
+      'Name',
+      'IF',
+      '',
+      'THEN Assign to',
+      'EXCEPT The following users',
+    ]);
+    expect(field(view, 'IF')).toMatchObject({ type: 'radio', value: 'basic' });
+    expect(field(view, '')).toMatchObject({
+      type: 'inline',
+      fields: [
+        { type: 'select', value: 'user' },
+        { type: 'select', value: 'department' },
+        { type: 'select', value: 'equals', options: [{ label: 'Equals' }] },
+        { type: 'text', value: 'Engineering' },
+      ],
+    });
+    expect(field(view, 'THEN Assign to')).toMatchObject({ values: ['Engineering'] });
+    expect(field(view, 'EXCEPT The following users')).toMatchObject({
+      values: ['Ada L (ada@example.com)'],
+    });
+  });
+
+  it('falls back to the expression for anything else', async () => {
+    mockApi({});
+    const expression = 'isMemberOfGroupName("Contractors") AND user.department=="Eng"';
+    const view = await groupRuleView(rule(expression));
+    expect(field(view, 'IF')).toMatchObject({ value: 'advanced' });
+    expect(field(view, '')).toMatchObject({ type: 'textarea', value: expression });
   });
 });
 
@@ -135,7 +216,8 @@ describe('samlSettingsView', () => {
     expect(field(view, 'Recipient URL')).toBeUndefined();
     expect(field(view, 'Application username')).toMatchObject({ value: '${source.email}' });
     expect(field(view, 'Response')).toMatchObject({ type: 'radio', value: 'true' });
-    expect(field(view, 'Attribute Statements')).toMatchObject({
+    const statements = view.sections.find((s) => s.title === 'Attribute Statements');
+    expect(statements?.fields[0]).toMatchObject({
       rows: [['email', 'Basic', 'user.email']],
     });
   });
@@ -171,13 +253,33 @@ describe('accessPolicyRuleView', () => {
       },
     };
     const view = await accessPolicyRuleView(rule);
-    expect(field(view, 'Groups')).toMatchObject({ values: ['Contractors'] });
-    expect(field(view, "AND User's IP is")).toMatchObject({ value: 'NOT_IN_ZONE' });
-    expect(field(view, 'Zones')).toMatchObject({ values: ['Office'] });
-    expect(field(view, 'User must authenticate with')).toMatchObject({ value: '2FA_PASSWORD' });
-    expect(field(view, 'Possession factor constraints are')).toMatchObject({
-      checked: ['phishingResistant'],
+    const fields = view.sections.flatMap((s) => s.fields);
+    const after = (label: string) => fields[fields.findIndex((f) => f.label === label) + 1];
+    expect(field(view, "AND User's group membership includes")).toMatchObject({
+      type: 'select',
+      value: 'SOME',
     });
-    expect(field(view, 'Re-authentication frequency')).toMatchObject({ value: '2 hours' });
+    expect(after("AND User's group membership includes")).toMatchObject({
+      label: '',
+      values: ['Contractors'],
+    });
+    expect(field(view, "AND User's IP is")).toMatchObject({ type: 'select', value: 'NOT_IN_ZONE' });
+    expect(after("AND User's IP is")).toMatchObject({ label: '', values: ['Office'] });
+    expect(field(view, 'AND User must authenticate with')).toMatchObject({
+      value: '2FA_PASSWORD',
+    });
+    // User presence defaults to REQUIRED, so "Require user interaction" is checked too.
+    expect(field(view, 'AND Possession factor constraints are')).toMatchObject({
+      checked: ['phishingResistant', 'userPresence'],
+    });
+    expect(after('AND Possession factor constraints are')).toMatchObject({
+      type: 'radio',
+      value: 'ANY',
+    });
+    expect(field(view, 'AND Prompt for authentication')).toMatchObject({ value: 'AFTER' });
+    expect(after('AND Prompt for authentication')).toMatchObject({
+      type: 'inline',
+      fields: [{ value: '2' }, { value: 'HOURS' }],
+    });
   });
 });

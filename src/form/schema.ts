@@ -2,13 +2,20 @@
  * A declarative description of a read-only form.
  *
  * Every view (SAML settings, policy rule, network zone, ...) maps an Okta API
- * response into a `FormView`. `ReadOnlyForm` turns it into the same Odyssey
- * components Okta uses for its edit dialogs, with every input read-only.
+ * response into a `FormView`. `ReadOnlyForm` lays it out the way Okta's edit
+ * dialogs are laid out (label column on the left, inputs on the right), with
+ * every input read-only.
+ *
+ * Labels starting with IF / AND / THEN / EXCEPT get Okta's grey callout chip.
+ * An empty label leaves the label column blank, as Okta does for pickers that
+ * belong to the field above.
  */
 
 export interface Option {
   value: string;
   label: string;
+  /** Grey explanation under the option. */
+  hint?: string;
 }
 
 export type Field =
@@ -19,7 +26,11 @@ export type Field =
   | { type: 'checkbox'; label: string; checked: boolean; hint?: string }
   | { type: 'checkboxGroup'; label: string; options: Option[]; checked: string[]; hint?: string }
   | { type: 'tags'; label: string; values: string[]; hint?: string }
-  | { type: 'table'; label: string; columns: string[]; rows: string[][]; hint?: string };
+  | { type: 'table'; label: string; columns: string[]; rows: string[][]; hint?: string }
+  /** Several inputs on one line, e.g. "8 [Hours]" or a basic group rule condition. */
+  | { type: 'inline'; label: string; fields: Field[]; hint?: string }
+  /** Explanatory text across the whole dialog, optionally with a bulleted list. */
+  | { type: 'note'; label: string; text: string; items: string[]; hint?: string };
 
 export interface Section {
   title?: string;
@@ -28,6 +39,10 @@ export interface Section {
 }
 
 export interface FormView {
+  /** Okta's intro paragraph under the dialog title. */
+  description?: string;
+  /** Dialog width in px; Okta's dialogs range from ~650 (authenticators) to ~1000. */
+  width?: number;
   sections: Section[];
   /** Raw API payload(s), shown in a collapsed accordion for anything the form doesn't cover. */
   raw?: unknown;
@@ -131,6 +146,24 @@ export const table = (
   rows: Array<Array<Maybe<string | number>>>,
   hint?: string,
 ): Field => ({ type: 'table', label, columns, rows: rows.map((r) => r.map(str)), hint });
+
+export const inline = (
+  label: string,
+  fields: Array<Field | false | null | undefined>,
+  hint?: string,
+): Field => ({
+  type: 'inline',
+  label,
+  fields: fields.filter((f): f is Field => Boolean(f)),
+  hint,
+});
+
+export const note = (text: string, items: string[] = []): Field => ({
+  type: 'note',
+  label: '',
+  text,
+  items,
+});
 
 /** Drop `false`/`undefined` entries so views can write `cond && text(...)` inline. */
 export const section = (
