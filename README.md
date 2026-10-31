@@ -68,6 +68,8 @@ Every dialog also has a collapsed **API response (JSON)** section, for fields th
 src/
   content/
     index.tsx        entry point: mounts the dialog host and starts the scanner
+    theme.ts         turns dark mode on and off with the setting
+    pageWorld.ts     page-world hooks: keeps loads dark until dark mode is ready
     scanner.ts       re-scans on DOM/URL changes; adds/removes view buttons
     dom.ts           finds sections by heading text and rows by object name; detects Edit controls
     viewHost.tsx     shadow DOM + React root
@@ -110,14 +112,24 @@ button bar, which Okta often renders empty for read-only admins), or else after 
 ### Dark mode
 
 Okta's console mixes Odyssey (MUI + emotion), legacy Courage CSS and CSS modules, and its nav shell
-lives in shadow roots, so dark mode doesn't restyle widgets one by one. `src/content/theme.ts` runs
-at `document_start`; `theme/darkMode.ts` reads every stylesheet in the document and in each open
-shadow root (fetching cross-origin ones the CSSOM won't expose), rewrites each rule's colors with
-`theme/palette.ts`, and adopts the result after the page's own sheets: same selectors, same order,
-so the dark color applies exactly where the light one did. The console's most used colors map to
-hand-picked dark tokens (`TOKENS`); anything else is converted by role (background, text, border,
-shadow) in OKLCH, keeping its hue. SVG `fill`/`stroke` attributes and inline colors are matched by
-value.
+lives in shadow roots, so dark mode doesn't restyle widgets one by one. `theme/darkMode.ts` reads
+every stylesheet in the document and in each open shadow root (fetching cross-origin ones the CSSOM
+won't expose), rewrites each rule's colors with `theme/palette.ts`, and adopts a dark copy of each
+sheet after the page's own: same selectors, same order, so the dark color applies exactly where the
+light one did. The console's most used colors map to hand-picked dark tokens (`TOKENS`); anything
+else is converted by role (background, text, border, shadow) in OKLCH, keeping its hue. SVG
+`fill`/`stroke` attributes and inline colors are matched by value.
+
+Avoiding a light flash on page loads takes three pieces:
+
+- `content/pageWorld.ts` runs in the page's JS world, synchronously at `document_start` (CRXJS
+  loads isolated-world scripts through an async `import()`, which lands after the first paint). If
+  the console was dark last time (a flag in the console's `localStorage`), it adopts a sheet that
+  paints the canvas dark and hides the page until dark mode is ready (at most 1.5 s).
+- It also announces `insertRule` calls (emotion) and new shadow roots, which don't show up as DOM
+  mutations, so dark mode updates in a microtask, before the browser renders the new rules.
+- Converted CSS of Okta's CDN stylesheets is cached in `chrome.storage.local`, keyed by their
+  content-hashed URLs, so on later loads they're dark before they've even downloaded.
 
 ### Adding a page
 

@@ -150,39 +150,12 @@ function convertAttributes(root: Document | ShadowRoot): string {
   return [...rules].join('');
 }
 
+const EVENT = 'oktamax:styles'; // dispatched by content/pageWorld.ts
+
 // Converted CSS per sheet, redone when its rule count changes (emotion inserts rules).
 const converted = new WeakMap<CSSStyleSheet, { length: number; css: string }>();
 
-// Sheets the CSSOM won't expose (cross-origin, no `crossorigin` attribute), fetched and parsed.
-const fetched = new Map<string, CSSStyleSheet | 'pending' | 'failed'>();
-
-function readRules(sheet: CSSStyleSheet, onFetched: () => void): CSSRuleList | undefined {
-  try {
-    return sheet.cssRules;
-  } catch {
-    const href = sheet.href;
-    if (!href) return undefined;
-    const copy = fetched.get(href);
-    if (copy instanceof CSSStyleSheet) return copy.cssRules;
-    if (!copy) {
-      fetched.set(href, 'pending');
-      fetch(href)
-        .then((res) => (res.ok ? res.text() : Promise.reject(new Error(String(res.status)))))
-        .then((text) => {
-          const parsed = new CSSStyleSheet();
-          parsed.replaceSync(text);
-          fetched.set(href, parsed);
-          onFetched();
-        })
-        .catch(() => fetched.set(href, 'failed'));
-    }
-    return undefined;
-  }
-}
-
-function convertSheet(sheet: CSSStyleSheet, onFetched: () => void): string {
-  const rules = readRules(sheet, onFetched);
-  if (!rules) return '';
+function convertSheet(sheet: CSSStyleSheet, rules = sheet.cssRules): string {
   const cached = converted.get(sheet);
   if (cached?.length === rules.length) return cached.css;
   const css = convertRules(rules);
@@ -190,11 +163,98 @@ function convertSheet(sheet: CSSStyleSheet, onFetched: () => void): string {
   return css;
 }
 
+/**
+ * Converted CSS of linked stylesheets by URL. Okta's CDN URLs carry a content
+ * hash, so those are kept across page loads: on the next load a sheet is dark
+ * before it has even downloaded, and isn't converted again.
+ */
+const byHref = new Map<string, string>();
+const HASHED = /[.-][0-9a-f]{8,}\.css$|\/\d+\.\d+\.\d+\//;
+const STORAGE_KEY = 'darkModeCss';
+// Changes with every build (chunk names are hashed), dropping CSS converted by older code.
+const BUILD = import.meta.url;
+
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+function save() {
+  if (import.meta.env.DEV) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const css = Object.fromEntries([...byHref].filter(([href]) => HASHED.test(href)));
+    void chrome.storage.local.set({ [STORAGE_KEY]: { build: BUILD, css } });
+  }, 2000);
+}
+
+const restored = chrome.storage.local.get(STORAGE_KEY).then((items) => {
+  const saved = items[STORAGE_KEY] as { build: string; css: Record<string, string> } | undefined;
+  if (saved?.build !== BUILD) return;
+  for (const [href, css] of Object.entries(saved.css)) if (!byHref.has(href)) byHref.set(href, css);
+});
+
+// Sheets the CSSOM won't expose (cross-origin, no `crossorigin` attribute) are fetched.
+const fetching = new Set<string>();
+function fetchSheet(href: string, onDone: () => void) {
+  if (fetching.has(href)) return;
+  fetching.add(href);
+  fetch(href)
+    .then((res) => (res.ok ? res.text() : Promise.reject(new Error(String(res.status)))))
+    .then((text) => {
+      const parsed = new CSSStyleSheet();
+      parsed.replaceSync(text);
+      byHref.set(href, convertRules(parsed.cssRules));
+      save();
+      onDone();
+    })
+    .catch(() => {});
+}
+
+type StyleOwner = HTMLLinkElement | HTMLStyleElement | SVGStyleElement;
+
+function ownerCss(owner: StyleOwner, onFetched: () => void): string {
+  const href = owner instanceof HTMLLinkElement ? owner.href : '';
+  const sheet = owner.sheet as CSSStyleSheet | null;
+  let css = '';
+  if (href && HASHED.test(href) && byHref.has(href)) css = byHref.get(href)!;
+  else if (sheet) {
+    let rules: CSSRuleList | undefined;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      if (href) fetchSheet(href, onFetched);
+    }
+    if (rules) {
+      css = convertSheet(sheet, rules);
+      if (href && byHref.get(href) !== css) {
+        byHref.set(href, css);
+        save();
+      }
+    } else css = byHref.get(href) ?? '';
+  } else css = byHref.get(href) ?? ''; // still downloading
+  const media = owner.getAttribute('media');
+  return css && media && media !== 'all' ? `@media ${media}{${css}}` : css;
+}
+
+/** The sheet content/pageWorld.ts adopts to keep the page dark until we're ready. */
+const isEarlyDark = (sheet: CSSStyleSheet) =>
+  (sheet.cssRules[0] as CSSStyleRule | undefined)?.style?.getPropertyValue(
+    '--oktamax-early-dark',
+  ) === '1';
+
+/** Shows the page content/pageWorld.ts hid, if it did. */
+export function removeEarlyDark() {
+  const sheets = document.adoptedStyleSheets;
+  if (sheets.some(isEarlyDark)) document.adoptedStyleSheets = sheets.filter((s) => !isEarlyDark(s));
+}
+
 interface ThemedRoot {
   root: Document | ShadowRoot;
-  sheet: CSSStyleSheet;
-  css: string;
+  /** Our dark copy of each of the root's sheets, by owner element or adopted sheet. */
+  mirrors: Map<object, { sheet: CSSStyleSheet; css: string }>;
+  attributesCss: string;
+  attributesDirty: boolean;
 }
+
+const ATTRIBUTES = {};
+const FIXED = {};
 
 export interface DarkMode {
   stop(): void;
@@ -205,38 +265,71 @@ export function startDarkMode(): DarkMode {
   const ownSheets = new WeakSet<CSSStyleSheet>();
 
   const update = (themed: ThemedRoot) => {
-    const { root, sheet } = themed;
-    let css = '';
-    for (const s of root.styleSheets) css += convertSheet(s, schedule);
-    for (const s of root.adoptedStyleSheets)
-      if (!ownSheets.has(s)) css += convertSheet(s, schedule);
-    css += convertAttributes(root);
-    if (root instanceof Document) css += BASE;
-    if (css !== themed.css) {
-      sheet.replaceSync(css);
-      themed.css = css;
+    const { root, mirrors } = themed;
+    const ours: CSSStyleSheet[] = [];
+    const seen = new Set<object>();
+    const add = (key: object, css: string) => {
+      if (!css) return;
+      seen.add(key);
+      let mirror = mirrors.get(key);
+      if (!mirror) {
+        mirror = { sheet: new CSSStyleSheet(), css: '' };
+        ownSheets.add(mirror.sheet);
+        mirrors.set(key, mirror);
+      }
+      if (mirror.css !== css) {
+        mirror.sheet.replaceSync(css);
+        mirror.css = css;
+      }
+      ours.push(mirror.sheet);
+    };
+
+    for (const owner of root.querySelectorAll<StyleOwner>('link[rel~="stylesheet" i], style')) {
+      if (!owner.hasAttribute(OWN_ATTR)) add(owner, ownerCss(owner, schedule));
     }
-    // Stay last, even if the page adopts sheets of its own later.
-    const adopted = root.adoptedStyleSheets;
-    if (adopted[adopted.length - 1] !== sheet) {
-      root.adoptedStyleSheets = [...adopted.filter((s) => s !== sheet), sheet];
+    const pageAdopted = root.adoptedStyleSheets.filter((s) => !ownSheets.has(s));
+    const early = pageAdopted.filter(isEarlyDark);
+    for (const sheet of pageAdopted) if (!early.includes(sheet)) add(sheet, convertSheet(sheet));
+    if (themed.attributesDirty) {
+      themed.attributesCss = convertAttributes(root);
+      themed.attributesDirty = false;
+    }
+    add(ATTRIBUTES, themed.attributesCss);
+    if (root instanceof Document) add(FIXED, BASE);
+    for (const key of mirrors.keys()) if (!seen.has(key)) mirrors.delete(key);
+
+    // Ours go last, after any sheets the page adopts itself.
+    const next = [...pageAdopted.filter((s) => !early.includes(s)), ...ours, ...early];
+    const current = root.adoptedStyleSheets;
+    if (next.length !== current.length || next.some((s, i) => s !== current[i])) {
+      root.adoptedStyleSheets = next;
     }
   };
 
   const observer = new MutationObserver((records) => {
     for (const record of records) {
       for (const node of record.addedNodes) if (node instanceof Element) addShadowRoots(node);
+      if (record.type !== 'characterData') {
+        const root = record.target.getRootNode();
+        const themed = roots.get(root as Document | ShadowRoot);
+        if (themed) themed.attributesDirty = true;
+      }
     }
     schedule();
   });
 
   const addRoot = (root: Document | ShadowRoot) => {
     if (roots.has(root)) return;
-    const sheet = new CSSStyleSheet();
-    ownSheets.add(sheet);
-    const themed = { root, sheet, css: '' };
+    const themed = { root, mirrors: new Map(), attributesCss: '', attributesDirty: true };
     roots.set(root, themed);
-    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributeFilter: ['style', 'fill', 'stroke'],
+    });
+    // Stylesheets finishing their download don't mutate the DOM.
+    root.addEventListener('load', schedule, true);
     update(themed);
     if (root instanceof ShadowRoot) addShadowRoots(root);
   };
@@ -252,34 +345,61 @@ export function startDarkMode(): DarkMode {
     }
   }
 
-  let pending = 0;
+  // Updates run as a microtask: after the page's script has added its rules or
+  // elements, but before the browser renders them.
+  const flush = () => {
+    for (const [root, themed] of roots) {
+      if (root instanceof ShadowRoot && !root.host.isConnected) roots.delete(root);
+      else update(themed);
+    }
+  };
+  let queued = false;
   function schedule() {
-    pending ||= requestAnimationFrame(() => {
-      pending = 0;
-      for (const [root, themed] of roots) {
-        if (root instanceof ShadowRoot && !root.host.isConnected) roots.delete(root);
-        else update(themed);
-      }
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      flush();
     });
   }
 
+  const onStyles = (event: Event) => {
+    const target = event.composedPath()[0];
+    if (target instanceof Element && target.shadowRoot && !target.hasAttribute(OWN_ATTR)) {
+      addRoot(target.shadowRoot);
+    }
+    if (target instanceof Node) {
+      const root = target.getRootNode();
+      if (root instanceof ShadowRoot && !root.host.hasAttribute(OWN_ATTR)) addRoot(root);
+    }
+    schedule();
+  };
+  document.addEventListener(EVENT, onStyles, true);
+
   addRoot(document);
   addShadowRoots(document.documentElement);
-  // Emotion's insertRule and late shadow roots don't always show up as mutations.
+  // Once the CSS converted on earlier page loads is back, the page is dark: show it.
+  void restored.finally(() => {
+    flush();
+    removeEarlyDark();
+  });
+  // A safety net for anything the events above miss (closed-over sheet APIs, late upgrades).
   const timer = setInterval(() => {
     addShadowRoots(document.documentElement);
     schedule();
-  }, 1000);
+  }, 2000);
 
   return {
     stop() {
       clearInterval(timer);
-      cancelAnimationFrame(pending);
       observer.disconnect();
-      for (const { root, sheet } of roots.values()) {
-        root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
+      document.removeEventListener(EVENT, onStyles, true);
+      for (const { root } of roots.values()) {
+        root.removeEventListener('load', schedule, true);
+        root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => !ownSheets.has(s));
       }
       roots.clear();
+      removeEarlyDark();
     },
   };
 }
