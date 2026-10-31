@@ -150,7 +150,7 @@ function convertAttributes(root: Document | ShadowRoot): string {
   return [...rules].join('');
 }
 
-const EVENT = 'oktamax:styles'; // dispatched by content/pageWorld.ts
+const EVENT = 'oktamax:styles'; // dispatched by content/pageWorld.iife.ts
 
 // Converted CSS per sheet, redone when its rule count changes (emotion inserts rules).
 const converted = new WeakMap<CSSStyleSheet, { length: number; css: string }>();
@@ -171,22 +171,22 @@ function convertSheet(sheet: CSSStyleSheet, rules = sheet.cssRules): string {
 const byHref = new Map<string, string>();
 const HASHED = /[.-][0-9a-f]{8,}\.css$|\/\d+\.\d+\.\d+\//;
 const STORAGE_KEY = 'darkModeCss';
-// Changes with every build (chunk names are hashed), dropping CSS converted by older code.
-const BUILD = import.meta.url;
+// A hash of this code, set in vite.config.ts; empty in dev, where nothing is kept.
+declare const __THEME_CACHE_KEY__: string;
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function save() {
-  if (import.meta.env.DEV) return;
+  if (!__THEME_CACHE_KEY__) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     const css = Object.fromEntries([...byHref].filter(([href]) => HASHED.test(href)));
-    void chrome.storage.local.set({ [STORAGE_KEY]: { build: BUILD, css } });
+    void chrome.storage.local.set({ [STORAGE_KEY]: { build: __THEME_CACHE_KEY__, css } });
   }, 2000);
 }
 
 const restored = chrome.storage.local.get(STORAGE_KEY).then((items) => {
   const saved = items[STORAGE_KEY] as { build: string; css: Record<string, string> } | undefined;
-  if (saved?.build !== BUILD) return;
+  if (!__THEME_CACHE_KEY__ || saved?.build !== __THEME_CACHE_KEY__) return;
   for (const [href, css] of Object.entries(saved.css)) if (!byHref.has(href)) byHref.set(href, css);
 });
 
@@ -233,13 +233,13 @@ function ownerCss(owner: StyleOwner, onFetched: () => void): string {
   return css && media && media !== 'all' ? `@media ${media}{${css}}` : css;
 }
 
-/** The sheet content/pageWorld.ts adopts to keep the page dark until we're ready. */
+/** The sheet content/pageWorld.iife.ts adopts to keep the page dark until we're ready. */
 const isEarlyDark = (sheet: CSSStyleSheet) =>
   (sheet.cssRules[0] as CSSStyleRule | undefined)?.style?.getPropertyValue(
     '--oktamax-early-dark',
   ) === '1';
 
-/** Shows the page content/pageWorld.ts hid, if it did. */
+/** Shows the page content/pageWorld.iife.ts hid, if it did. */
 export function removeEarlyDark() {
   const sheets = document.adoptedStyleSheets;
   if (sheets.some(isEarlyDark)) document.adoptedStyleSheets = sheets.filter((s) => !isEarlyDark(s));

@@ -1,16 +1,14 @@
 /**
- * Runs in the page's own JS world at document_start, synchronously: unlike
- * the isolated-world scripts, it isn't loaded through an async `import()`, so
- * it runs before the console's first paint.
- *
- * Self-contained on purpose: main-world scripts can't import extension chunks.
+ * Runs in the page's own JS world at document_start. The `.iife.ts` name makes
+ * CRXJS inject it as-is rather than through its async `import()` loader (which
+ * it uses for HMR in dev), so it runs before the console's first paint.
  */
 
 // 1. If the console was dark last time, keep it dark until dark mode has
-// darkened the page's stylesheets: a dark canvas, with the page hidden for a
-// moment instead of flashing light. Dark mode removes this; the animation shows
-// the page anyway if it never does.
-// A constructed sheet: Okta's CSP blocks <style> elements without its nonce.
+// restored its cached CSS and darkened the page's stylesheets: a dark canvas,
+// with the page hidden for a moment instead of flashing light. Dark mode
+// removes this; the animation shows the page anyway if it never does. A
+// constructed sheet, because Okta's CSP blocks <style> elements without its nonce.
 if (localStorage.getItem('oktamax-dark') === '1') {
   const early = new CSSStyleSheet();
   early.replaceSync(`

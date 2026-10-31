@@ -68,8 +68,8 @@ Every dialog also has a collapsed **API response (JSON)** section, for fields th
 src/
   content/
     index.tsx        entry point: mounts the dialog host and starts the scanner
-    theme.ts         turns dark mode on and off with the setting
-    pageWorld.ts     page-world hooks: keeps loads dark until dark mode is ready
+    theme.iife.ts    turns dark mode on and off with the setting
+    pageWorld.iife.ts page-world hooks: keeps loads dark until dark mode is ready
     scanner.ts       re-scans on DOM/URL changes; adds/removes view buttons
     dom.ts           finds sections by heading text and rows by object name; detects Edit controls
     viewHost.tsx     shadow DOM + React root
@@ -120,16 +120,22 @@ light one did. The console's most used colors map to hand-picked dark tokens (`T
 else is converted by role (background, text, border, shadow) in OKLCH, keeping its hue. SVG
 `fill`/`stroke` attributes and inline colors are matched by value.
 
-Avoiding a light flash on page loads takes three pieces:
+Avoiding a light flash on page loads takes these pieces:
 
-- `content/pageWorld.ts` runs in the page's JS world, synchronously at `document_start` (CRXJS
-  loads isolated-world scripts through an async `import()`, which lands after the first paint). If
-  the console was dark last time (a flag in the console's `localStorage`), it adopts a sheet that
-  paints the canvas dark and hides the page until dark mode is ready (at most 1.5 s).
+- Both scripts that run at `document_start` are named `*.iife.ts`, so CRXJS injects them as plain
+  scripts. Otherwise it loads content scripts through an async `import()` (in dev, also via the dev
+  server for HMR), which lands after the console's first paint. No Chrome API can rewrite a page's
+  stylesheets for us (`content_scripts.css` and `registerContentScripts` take only packaged files,
+  `scripting.insertCSS` races the first paint, and `declarativeNetRequest` can't change response
+  bodies), so timing the content scripts is what matters.
+- `content/pageWorld.iife.ts` runs in the page's JS world. If the console was dark last time (a
+  flag in the console's `localStorage`), it adopts a sheet that paints the canvas dark and hides the
+  page until dark mode is ready (at most 1.5 s).
 - It also announces `insertRule` calls (emotion) and new shadow roots, which don't show up as DOM
   mutations, so dark mode updates in a microtask, before the browser renders the new rules.
 - Converted CSS of Okta's CDN stylesheets is cached in `chrome.storage.local`, keyed by their
-  content-hashed URLs, so on later loads they're dark before they've even downloaded.
+  content-hashed URLs, so on later loads they're dark before they've even downloaded. The cache is
+  dropped whenever `src/theme/` changes (a hash set in `vite.config.ts`) and isn't kept in dev.
 
 ### Adding a page
 

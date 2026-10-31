@@ -32,13 +32,13 @@ export default defineManifest({
   content_scripts: [
     {
       matches: adminConsoleMatches,
-      js: ['src/content/pageWorld.ts'],
+      js: ['src/content/pageWorld.iife.ts'],
       run_at: 'document_start',
       world: 'MAIN',
     },
     {
       matches: adminConsoleMatches,
-      js: ['src/content/theme.ts'],
+      js: ['src/content/theme.iife.ts'],
       run_at: 'document_start',
     },
     {

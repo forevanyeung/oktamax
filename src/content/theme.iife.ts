@@ -1,11 +1,11 @@
 /**
- * Turns dark mode on and off. `content/pageWorld.ts` runs first and keeps the
- * page dark and hidden until dark mode has darkened its stylesheets.
+ * Turns dark mode on and off. Like `pageWorld.iife.ts`, injected as-is (not
+ * through CRXJS's async loader), so dark mode starts at document_start.
  */
 import { watchDarkMode } from '../settings';
 import { removeEarlyDark, startDarkMode, type DarkMode } from '../theme/darkMode';
 
-// The last known answer (also read by content/pageWorld.ts), so dark mode
+// The last known answer (also read by pageWorld.iife.ts), so dark mode
 // starts without waiting for `chrome.storage`.
 const LAST_DARK = 'oktamax-dark';
 
@@ -18,7 +18,7 @@ void watchDarkMode((dark) => {
   else if (!dark) {
     darkMode?.stop();
     darkMode = undefined;
-    // pageWorld.ts guessed dark from the last visit; show the page.
+    // pageWorld.iife.ts guessed dark from the last visit; show the page.
     removeEarlyDark();
   }
 });
