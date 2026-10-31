@@ -216,14 +216,41 @@ export function createViewMenuItem(
   return item;
 }
 
+/** An element standing in for an actions area Okta didn't render; removed with its view control. */
+export function createActions(tag: string, className = ''): HTMLElement {
+  const actions = document.createElement(tag);
+  actions.className = className;
+  actions.setAttribute(OWN_ATTR, 'actions');
+  return actions;
+}
+
+/** An actions cell at the end of `row`, for tables Okta renders without one for read-only admins. */
+export function addActionsCell(row: Element): HTMLElement {
+  const cell = createActions('td');
+  row.append(cell);
+  // Keep the header as wide as the rows, like the empty header Okta gives its own actions column.
+  const header = row.closest('table')?.querySelector('thead tr');
+  if (header && header.children.length < row.children.length) {
+    header.append(createActions('th'));
+  }
+  return cell;
+}
+
 /**
  * Put the view control where Okta puts its Edit control: next to `edit` when
  * the page shows one (as an item of the same menu if it's in an "Actions"
  * menu), else in the object's `actions` area (next to a disabled "Actions"
- * menu if it has one), else right after the anchor text.
+ * menu if it has one, recreating the area if Okta left it out), else right
+ * after the anchor text.
  */
 export function placeViewControl(
-  target: { key: string; title: string; anchor: Element; actions?: Element | null },
+  target: {
+    key: string;
+    title: string;
+    anchor: Element;
+    actions?: Element | null;
+    addActions?: () => Element;
+  },
   edit: Element | undefined,
   onClick: () => void,
 ) {
@@ -234,13 +261,14 @@ export function placeViewControl(
   }
 
   const button = createViewButton(target.key, target.title, onClick);
+  const actions = target.actions ?? (edit ? undefined : target.addActions?.());
   // Next to Okta's Edit control or (disabled) "Actions" menu, floated the same way.
-  const neighbour = edit ?? target.actions?.querySelector(':scope > .dropdown');
+  const neighbour = edit ?? actions?.querySelector(':scope > .dropdown');
   if (neighbour) {
     button.style.float = getComputedStyle(neighbour).float;
     neighbour.after(button);
-  } else if (target.actions) {
-    target.actions.append(button);
+  } else if (actions) {
+    actions.append(button);
   } else {
     // Never inside a link or button.
     const interactive = target.anchor.closest('a, button, [role="button"]');

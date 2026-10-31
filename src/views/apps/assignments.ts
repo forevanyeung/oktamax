@@ -1,4 +1,4 @@
-import { isVisible } from '../../content/dom';
+import { addActionsCell, isVisible } from '../../content/dom';
 import {
   checkbox,
   note,
@@ -142,7 +142,7 @@ export async function groupAssignmentView(appId: string, groupId: string): Promi
 
 const ROW = 'tr, [role="row"]';
 
-/** Assignment rows link to the user's / group's page; read-only admins get no actions cell. */
+/** Assignment rows link to the user's / group's page; read-only admins get no actions column. */
 function findRows(link: RegExp) {
   return [...document.querySelectorAll<HTMLAnchorElement>('a[href]')].flatMap((anchor) => {
     const id = anchor.getAttribute('href')?.match(link)?.[1];
@@ -157,6 +157,7 @@ export function assignmentTargets(appId: string): ViewTarget[] {
     title: 'View User Assignment',
     anchor,
     scope: row,
+    addActions: () => addActionsCell(row),
     load: () => userAssignmentView(appId, id),
   }));
   const groups = findRows(/^\/admin\/group\/(\w+)$/).map(({ id, anchor, row }) => ({
@@ -164,6 +165,7 @@ export function assignmentTargets(appId: string): ViewTarget[] {
     title: 'View Group Assignment',
     anchor,
     scope: row,
+    addActions: () => addActionsCell(row),
     load: () => groupAssignmentView(appId, id),
   }));
   return [...users, ...groups];

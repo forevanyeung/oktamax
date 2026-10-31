@@ -51,9 +51,11 @@ export function startScanner({ providers, openView, alwaysShow }: ScannerOptions
       }
     }
 
-    // Remove view controls whose target disappeared or now has a real Edit button.
+    // Remove view controls whose target disappeared or now has a real Edit button,
+    // along with any actions area we added for them.
     for (const control of document.querySelectorAll<HTMLElement>('[data-oktamax-key]')) {
-      if (!seen.has(control.dataset.oktamaxKey ?? '')) control.remove();
+      if (seen.has(control.dataset.oktamaxKey ?? '')) continue;
+      (control.closest(`[${OWN_ATTR}="actions"]`) ?? control).remove();
     }
   }
 

@@ -1,4 +1,4 @@
-import { findSections } from '../../content/dom';
+import { createActions, findSections } from '../../content/dom';
 import { get } from '../../okta/api';
 import type { App } from '../../okta/types';
 import type { ViewProvider } from '../types';
@@ -39,6 +39,12 @@ export const appsProvider: ViewProvider = {
         anchor,
         scope: section,
         actions: section.querySelector('.link-bar'),
+        // Okta's Edit link sits in a link bar right after the heading.
+        addActions: () => {
+          const bar = createActions('div', 'link-bar hdr-layout clearfix');
+          anchor.after(bar);
+          return bar;
+        },
         load: async () => samlSettingsView(await get<App>(`/api/v1/apps/${appId}`)),
       };
     });
