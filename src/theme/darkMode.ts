@@ -184,7 +184,9 @@ const byHref = new Map<string, string>();
 const HASHED = /[.-][0-9a-f]{8,}\.css$|\/\d+\.\d+\.\d+\//;
 const STORAGE_KEY = 'darkModeCss';
 // A hash of this code, set in vite.config.ts; empty in dev, where nothing is kept.
-declare const __THEME_CACHE_KEY__: string;
+// CRXJS's dev build of `.iife.ts` scripts skips `define`, leaving it undeclared there.
+declare const __THEME_CACHE_KEY__: string | undefined;
+const CACHE_KEY = typeof __THEME_CACHE_KEY__ === 'string' ? __THEME_CACHE_KEY__ : '';
 
 // When each sheet was last on a page. Every Okta release brings new hashed URLs, so
 // sheets unused for a while are dropped; otherwise the cache outgrows storage's quota.
@@ -208,14 +210,14 @@ interface SavedCss {
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function save() {
-  if (!__THEME_CACHE_KEY__) return;
+  if (!CACHE_KEY) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     // Reloading the extension leaves this script running without access to storage.
     if (!chrome.runtime?.id) return;
     const hrefs = [...byHref.keys()].filter((href) => HASHED.test(href) && isFresh(href));
     const saved: SavedCss = {
-      build: __THEME_CACHE_KEY__,
+      build: CACHE_KEY,
       css: Object.fromEntries(hrefs.map((href) => [href, byHref.get(href)!])),
       used: Object.fromEntries(hrefs.map((href) => [href, usedAt.get(href)!])),
     };
@@ -225,7 +227,7 @@ function save() {
 
 const restored = chrome.storage.local.get(STORAGE_KEY).then((items) => {
   const saved = items[STORAGE_KEY] as SavedCss | undefined;
-  if (!__THEME_CACHE_KEY__ || saved?.build !== __THEME_CACHE_KEY__) return;
+  if (!CACHE_KEY || saved?.build !== CACHE_KEY) return;
   for (const [href, css] of Object.entries(saved.css)) {
     if (byHref.has(href)) continue;
     byHref.set(href, css);
