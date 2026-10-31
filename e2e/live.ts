@@ -55,6 +55,7 @@ const pages: Array<[string, string]> = [
   ['auth-policy', `/admin/authentication-policies/app-sign-in/${accessPolicy.id}`],
   ['saml-general', appPage('Oktamax SAML Test', 'general')],
   ['saml-signon', appPage('Oktamax SAML Test', 'signon')],
+  ['saml-assignments', appPage('Oktamax SAML Test', 'assignments')],
   ['oidc-web-general', appPage('Oktamax OIDC Web', 'general')],
   ['oidc-spa-general', appPage('Oktamax OIDC SPA', 'general')],
   ['bookmark-general', appPage('Oktamax Bookmark', 'general')],

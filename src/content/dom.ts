@@ -151,6 +151,8 @@ export function createViewButton(
   button.innerHTML = EYE_ICON;
   Object.assign(button.style, {
     display: 'inline-flex',
+    // Okta's action cells can be fixed-width flex rows that would squeeze the icon away.
+    flexShrink: '0',
     alignItems: 'center',
     verticalAlign: 'middle',
     margin: '0 0 0 8px',

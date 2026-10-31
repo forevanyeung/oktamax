@@ -47,6 +47,7 @@ of an **Actions** menu, a **View** item is added to the same menu (its tooltip s
 | Admin console page                   | Edit dialog it mirrors                        |
 | ------------------------------------ | --------------------------------------------- |
 | Applications › app › General         | SAML Settings (Edit SAML Integration)         |
+| Applications › app › Assignments     | Edit User Assignment, Edit Group Assignment   |
 | Directory › Groups › Rules           | Edit Rule                                     |
 | Security › Networks                  | Edit Zone (IP, dynamic, enhanced dynamic)     |
 | Security › Authentication Policies   | Edit Rule                                     |
