@@ -1,4 +1,4 @@
-# Okta Read-Only View
+# Okta Max
 
 A Chrome extension for **read-only Okta admins**. Read-only admins can call the same `GET` APIs the
 admin console uses, but much of that data only appears in dialogs behind an **Edit** button, which

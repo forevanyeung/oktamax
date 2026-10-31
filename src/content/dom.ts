@@ -169,3 +169,29 @@ export function insertAfterAnchor(anchor: Element, button: HTMLElement) {
   if (interactive) interactive.after(button);
   else anchor.append(button);
 }
+
+/** Add a "MAX" label next to the Okta logo in the sidenav, so it's clear the extension is active. */
+export function ensureMaxBadge() {
+  const container = document.querySelector('.sidenav-header-logo-container');
+  if (!container || container.querySelector(`[${OWN_ATTR}="max-badge"]`)) return;
+
+  const badge = document.createElement('span');
+  badge.setAttribute(OWN_ATTR, 'max-badge');
+  badge.textContent = 'MAX';
+  badge.title = 'Okta Max is active';
+  Object.assign(badge.style, {
+    display: 'inline-block',
+    alignSelf: 'center',
+    marginLeft: '8px',
+    padding: '2px 6px',
+    borderRadius: '4px',
+    background: '#1662dd',
+    color: '#fff',
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.08em',
+    lineHeight: '1.4',
+    verticalAlign: 'middle',
+  } satisfies Partial<CSSStyleDeclaration>);
+  container.append(badge);
+}

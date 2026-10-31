@@ -12,13 +12,13 @@ const adminConsoleMatches = [
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Okta Read-Only View',
+  name: 'Okta Max',
   description: pkg.description,
   version: pkg.version,
   permissions: ['storage'],
   action: {
     default_popup: 'src/popup/index.html',
-    default_title: 'Okta Read-Only View',
+    default_title: 'Okta Max',
   },
   content_scripts: [
     {
