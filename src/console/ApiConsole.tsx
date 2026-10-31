@@ -3,23 +3,15 @@
  * API with the admin's session: a prompt line (`GET /api/v1/users?limit=5`),
  * query parameters and a JSON body, the response, and a history of requests.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { loadSettings, onSettingsChanged } from '../settings';
+import { fillTemplate, LABELS, pageContext, placeholders, type PageContext } from './context';
 import { timeAgo } from './format';
-import {
-  METHODS,
-  joinUrl,
-  send,
-  splitMethod,
-  splitUrl,
-  toConsoleUrl,
-  type ApiRequest,
-  type ApiResponse,
-  type Method,
-  type Param,
-} from './request';
+import { Prompt, type PromptHandle } from './Prompt';
+import { joinUrl, send, splitUrl, type ApiRequest, type ApiResponse, type Param } from './request';
 import { ResponseView } from './ResponseView';
+import { objectPath } from './suggest';
 import { addToHistory, loadState, saveState, type ConsoleState, type HistoryEntry } from './store';
 
 type Result =
@@ -27,6 +19,36 @@ type Result =
   | { status: 'sending'; request: ApiRequest }
   | { status: 'done'; request: ApiRequest; response: ApiResponse; id: number }
   | { status: 'error'; request: ApiRequest; message: string };
+
+/** The page's objects, kept up to date as the admin console navigates. */
+function usePageContext(active: boolean): PageContext {
+  const [href, setHref] = useState(location.href);
+  useEffect(() => {
+    if (!active) return;
+    setHref(location.href);
+    const timer = setInterval(() => setHref(location.href), 500);
+    return () => clearInterval(timer);
+  }, [active]);
+  return useMemo(() => pageContext(new URL(href)), [href]);
+}
+
+const ExpandIcon = ({ maximized }: { maximized: boolean }) => (
+  <svg
+    viewBox="0 0 16 16"
+    width="14"
+    height="14"
+    aria-hidden
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+  >
+    {maximized ? (
+      <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
+    ) : (
+      <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+    )}
+  </svg>
+);
 
 const MIN_HEIGHT = 160;
 const clampHeight = (height: number) =>
@@ -235,9 +257,7 @@ export const ApiConsole = () => {
   const [result, setResult] = useState<Result>({ status: 'idle' });
   const [panel, setPanel] = useState<'params' | 'body'>();
   const [showHistory, setShowHistory] = useState(true);
-  const prompt = useRef<HTMLInputElement>(null);
-  // Arrow up/down at the prompt walks the history, like a shell.
-  const cursor = useRef<{ index: number; draft: ApiRequest }>(undefined);
+  const prompt = useRef<PromptHandle>(null);
   const responses = useRef(0);
 
   const [enabled, setEnabled] = useState(false);
@@ -260,10 +280,9 @@ export const ApiConsole = () => {
     (change: Partial<ConsoleState>) => setState((s) => s && { ...s, ...change }),
     [],
   );
-  const setDraft = (change: Partial<ApiRequest>) => {
-    cursor.current = undefined;
+  const setDraft = (change: Partial<ApiRequest>) =>
     setState((s) => s && { ...s, draft: { ...s.draft, ...change } });
-  };
+  const context = usePageContext(!!state?.open && enabled);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -280,8 +299,20 @@ export const ApiConsole = () => {
     if (state?.open) prompt.current?.focus();
   }, [state?.open]);
 
-  const run = async (request: ApiRequest) => {
-    if (!request.url.trim()) return;
+  const run = async (template: ApiRequest) => {
+    if (!template.url.trim()) return;
+    // `{userId}` and the like are filled from the page.
+    const request = { ...template, url: fillTemplate(template.url, context) };
+    const missing = placeholders(request.url);
+    if (missing.length) {
+      const names = missing.map((name) => `{${name}}`).join(', ');
+      setResult({
+        status: 'error',
+        request,
+        message: `this page has no ${names}. Replace ${missing.length > 1 ? 'them' : 'it'} with an ID.`,
+      });
+      return;
+    }
     setResult({ status: 'sending', request });
     const entry = (status: number, ms: number): HistoryEntry => ({
       ...request,
@@ -314,45 +345,6 @@ export const ApiConsole = () => {
   };
   const openUrl = (url: string) => load({ method: 'GET', url, body: '' }, true);
 
-  const onPromptChange = (value: string) => {
-    let { method, url } = splitMethod(value);
-    if (/^https?:\/\//i.test(url.trim())) {
-      try {
-        url = toConsoleUrl(url.trim());
-      } catch {
-        // Not a URL yet; leave it as typed.
-      }
-    }
-    setDraft(method ? { method, url } : { url });
-  };
-
-  const onPromptKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      void run(draft);
-    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-      const { history } = state;
-      const current = cursor.current ?? { index: -1, draft };
-      const index = Math.max(
-        -1,
-        Math.min(history.length - 1, current.index + (event.key === 'ArrowUp' ? 1 : -1)),
-      );
-      const request = index < 0 ? current.draft : history[index];
-      if (index === current.index || !request) return;
-      event.preventDefault();
-      setState(
-        (s) =>
-          s && {
-            ...s,
-            draft: { method: request.method, url: request.url, body: request.body },
-          },
-      );
-      cursor.current = index < 0 ? undefined : { index, draft: current.draft };
-    } else if (event.key === 'Escape') {
-      update({ open: false });
-    }
-  };
-
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const grip = event.currentTarget;
@@ -361,6 +353,7 @@ export const ApiConsole = () => {
     const startHeight = state.height;
     const onMove = (e: PointerEvent) =>
       update({ height: clampHeight(startHeight + startY - e.clientY) });
+    update({ maximized: false });
     const onUp = () => {
       grip.removeEventListener('pointermove', onMove);
       grip.removeEventListener('pointerup', onUp);
@@ -390,7 +383,7 @@ export const ApiConsole = () => {
     <section
       className="drawer"
       aria-label="API console"
-      style={{ height: clampHeight(state.height) }}
+      style={{ height: state.maximized ? '100vh' : clampHeight(state.height) }}
       // Keeps the console's keyboard shortcuts from seeing what's typed here.
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -401,8 +394,9 @@ export const ApiConsole = () => {
         className="grip"
         role="separator"
         aria-orientation="horizontal"
-        title="Drag to resize"
+        title="Drag to resize, double-click to expand"
         onPointerDown={startResize}
+        onDoubleClick={() => update({ maximized: !state.maximized })}
       />
       <header className="drawer-head">
         <button
@@ -417,6 +411,16 @@ export const ApiConsole = () => {
         <span className="hint origin">{location.host}</span>
         <div className="spacer" />
         <span className="hint">Ctrl + ` to toggle</span>
+        <button
+          type="button"
+          className="icon"
+          title={state.maximized ? 'Restore console' : 'Expand console'}
+          aria-label={state.maximized ? 'Restore console' : 'Expand console'}
+          aria-pressed={state.maximized}
+          onClick={() => update({ maximized: !state.maximized })}
+        >
+          <ExpandIcon maximized={state.maximized} />
+        </button>
         <button
           type="button"
           className="icon close"
@@ -436,40 +440,16 @@ export const ApiConsole = () => {
           />
         )}
         <div className="work">
-          <form
-            className="prompt"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void run(draft);
-            }}
-          >
-            <select
-              className={`method-select m-${draft.method}`}
-              aria-label="Method"
-              value={draft.method}
-              onChange={(e) => setDraft({ method: e.target.value as Method })}
-            >
-              {METHODS.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-            <input
-              ref={prompt}
-              className="prompt-input"
-              aria-label="Request URL"
-              spellCheck={false}
-              autoComplete="off"
-              placeholder="/api/v1/users?limit=10   (type a method first to switch, ↑ for history)"
-              value={draft.url}
-              onChange={(e) => onPromptChange(e.target.value)}
-              onKeyDown={onPromptKeyDown}
-            />
-            <button type="submit" className="send" disabled={sending || !draft.url.trim()}>
-              {sending ? 'Sending…' : 'Send'}
-            </button>
-          </form>
+          <Prompt
+            ref={prompt}
+            draft={draft}
+            history={state.history}
+            context={context}
+            sending={sending}
+            onChange={setDraft}
+            onSend={() => void run(draft)}
+            onEscape={() => update({ open: false })}
+          />
           <div className="request-tabs" role="tablist">
             {(
               [
@@ -488,6 +468,23 @@ export const ApiConsole = () => {
                 {label}
               </button>
             ))}
+            <div className="spacer" />
+            {Object.entries(context).map(([name, value]) => {
+              const path = objectPath(name, context);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  className="page-object"
+                  title={`{${name}} = ${value}${path ? `\nClick to browse ${path}` : ''}`}
+                  disabled={!path}
+                  onClick={() => path && prompt.current?.browse(`${path}/`)}
+                >
+                  <span className="page-object-label">{LABELS[name] ?? name}</span>
+                  {value}
+                </button>
+              );
+            })}
           </div>
           {panel && (
             <div className="request-panel">
@@ -505,7 +502,9 @@ export const ApiConsole = () => {
           {result.status === 'idle' && (
             <p className="hint placeholder">
               Send a request to see its response. Paths without a leading slash are under /api/v1/,
-              e.g. <code>groups?q=Everyone</code>.
+              e.g. <code>groups?q=Everyone</code>. Suggestions come from Okta's API reference, and{' '}
+              <code>{'{userId}'}</code>, <code>{'{groupId}'}</code>, <code>{'{appId}'}</code>… are
+              filled in from the page you're on.
             </p>
           )}
           {result.status === 'sending' && (

@@ -74,6 +74,15 @@ small Postman: a prompt that sends requests to this org's API with your session.
 - Type a path and press Enter: `/api/v1/users?limit=5`. Paths without a leading slash are under
   `/api/v1/` (`groups?q=Everyone`), and pasted full URLs keep only their path, so requests always
   go to the org you're on.
+- As you type, the prompt suggests endpoints from Okta's API reference (the Management API's
+  OpenAPI spec): paths, query parameters after `?`, or endpoints whose summary has the words you
+  type (`list group members`). ↓ / Tab / Enter pick one, Esc closes the list, `Ctrl` + Space opens
+  it.
+- Path parameters like `{userId}`, `{groupId}`, `{appId}`, `{policyId}` or `{authServerId}` are
+  filled in from the page you're on, like rockstar: on a user's page, suggestions use that user's
+  ID, and `/api/v1/users/{userId}/groups` is sent for that user. With an empty prompt, the
+  suggestions are the page's objects' endpoints. The page's objects are also shown next to
+  Params / Body; click one to browse its endpoints.
 - Pick the method from the menu, or type it first (`post groups`). `POST`, `PUT`, `PATCH` and
   `DELETE` send Okta's XSRF token like the console does, so they work with your admin role's
   permissions. A read-only admin gets a 403.
@@ -85,13 +94,19 @@ small Postman: a prompt that sends requests to this org's API with your session.
   **Headers**. Okta error summaries are shown above it, and **Next page** follows the `Link`
   header.
 - **History** keeps the last 100 requests (in `chrome.storage.local`). Click one to load it, ▶ to
-  send it again, or press ↑ / ↓ at the prompt. Drag the drawer's top edge to resize it.
+  send it again, or press ↑ / ↓ at the prompt. Drag the drawer's top edge to resize it, or expand
+  it over the whole page with the button next to ×, or by double-clicking that edge.
+
+The endpoint list (`src/console/endpoints.json`) is generated from
+[Okta's spec](https://github.com/okta/okta-management-openapi-spec): run `npm run endpoints` to
+update it.
 
 ## How it works
 
 ```
 src/
-  console/           the API console drawer: requests, history, JSON tree and table views
+  console/           the API console drawer: requests, history, endpoint suggestions, JSON tree
+                     and table views
   content/
     index.tsx        entry point: mounts the dialog host and starts the scanner
     theme.iife.ts    turns dark mode on and off with the setting

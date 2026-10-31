@@ -33,7 +33,7 @@ export const consoleStyles = `
 }
 
 .drawer {
-  position: fixed; z-index: 2147482000; left: 0; right: 0; bottom: 0;
+  box-sizing: border-box; position: fixed; z-index: 2147482000; left: 0; right: 0; bottom: 0;
   display: flex; flex-direction: column;
   border-top: 1px solid var(--border); background: var(--surface);
   box-shadow: var(--shadow) 0 -6px 24px 0;
@@ -141,7 +141,39 @@ export const consoleStyles = `
 }
 :host([data-theme='dark']) .drawer .send { background: ${DARK.primary}; }
 
+.prompt-wrap { position: relative; flex: none; }
+.suggestions {
+  position: absolute; z-index: 2; top: calc(100% + 4px); left: 0; right: 0;
+  max-height: min(320px, 60vh); margin: 0; padding: 4px 0; overflow: auto; list-style: none;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  box-shadow: var(--shadow) 0 6px 18px 0;
+}
+.suggestion {
+  display: grid; grid-template-columns: 56px minmax(0, max-content) minmax(0, 1fr); gap: 12px;
+  align-items: baseline; padding: 3px 12px; cursor: pointer;
+}
+.suggestion.active { background: var(--raised); }
+.suggestion-label {
+  overflow: hidden; font: 12px/20px ${MONO_FONT}; white-space: nowrap; text-overflow: ellipsis;
+}
+.suggestion-label b { color: var(--blue); }
+.suggestion-detail {
+  overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis;
+}
+.m-param { color: var(--muted); }
+
 .request-tabs, .tabs { display: flex; gap: 2px; }
+.request-tabs { align-items: center; }
+.drawer .page-object {
+  display: inline-flex; gap: 6px; align-items: center; margin-left: 6px; padding: 0 8px 0 0;
+  overflow: hidden; border: 1px solid var(--border); border-radius: 4px;
+  font: 11px/20px ${MONO_FONT};
+}
+.drawer .page-object:hover:not(:disabled) { border-color: var(--blue); }
+.drawer .page-object:disabled { opacity: 1; }
+.page-object-label {
+  padding: 0 6px; background: var(--raised); color: var(--muted); font: 600 11px/20px ${BODY_FONT};
+}
 .request-tabs { flex: none; margin-top: 6px; }
 .drawer .tab {
   padding: 4px 10px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600;

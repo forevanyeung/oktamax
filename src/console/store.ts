@@ -18,6 +18,8 @@ export interface HistoryEntry {
 export interface ConsoleState {
   open: boolean;
   height: number;
+  /** Covering the whole page, rather than at `height`. */
+  maximized: boolean;
   draft: ApiRequest;
   history: HistoryEntry[];
 }
@@ -28,6 +30,7 @@ export const HISTORY_LIMIT = 100;
 export const defaultState: ConsoleState = {
   open: false,
   height: 420,
+  maximized: false,
   draft: { method: 'GET', url: '/api/v1/users/me', body: '' },
   history: [],
 };

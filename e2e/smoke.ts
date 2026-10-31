@@ -241,6 +241,7 @@ async function main() {
   await prompt.pressSequentially('post groups');
   assert.equal(await drawer.getByLabel('Method').inputValue(), 'POST');
   assert.equal(await prompt.inputValue(), 'groups');
+  await prompt.press('Escape'); // closes the suggestions
   await drawer.getByRole('tab', { name: 'Body' }).click();
   await drawer.locator('textarea').fill('{"profile":{"name":""}}');
   await drawer.getByRole('button', { name: 'Format' }).click();
@@ -265,6 +266,41 @@ async function main() {
     '/api/v1/users?after=00u2&limit=2',
     'users?limit=2',
   ]);
+
+  // Suggestions come from the API reference, with IDs from the page filled in.
+  const USER = '00u1abcdefghijklmnop';
+  await page.goto(`${ORIGIN}/admin/user/profile/view/${USER}#tab-account`);
+  const userDrawer = page.getByRole('region', { name: 'API console' });
+  const userPrompt = userDrawer.getByLabel('Request URL');
+  await userPrompt.fill('');
+  const suggestions = userDrawer.getByRole('listbox').getByRole('option');
+  await suggestions.first().waitFor();
+  assert.match(
+    (await suggestions.first().textContent()) ?? '',
+    /^GET\/api\/v1\/users\/\{userId\}Retrieve a user/,
+  );
+  await userPrompt.press('ArrowDown');
+  await userPrompt.press('Enter');
+  assert.equal(await userPrompt.inputValue(), `/api/v1/users/${USER}`);
+  await userPrompt.fill('/api/v1/users/{userId}/gro');
+  await suggestions.filter({ hasText: '/groups' }).first().click();
+  assert.equal(await userPrompt.inputValue(), `/api/v1/users/${USER}/groups`);
+  await userPrompt.fill('/api/v1/users/{userId}/groups');
+  await userPrompt.press('Escape');
+  await userPrompt.press('Enter');
+  await userDrawer.getByText('200 OK').waitFor();
+  assert.equal(consoleRequests.at(-1)?.url, `/api/v1/users/${USER}/groups`);
+  await userDrawer.getByRole('button', { name: /User\s*00u1/ }).waitFor();
+
+  // Expand covers the page.
+  await userDrawer.getByRole('button', { name: 'Expand console' }).click();
+  assert.equal(
+    await userDrawer.evaluate((el) => el.getBoundingClientRect().height),
+    page.viewportSize()?.height,
+  );
+  await userPrompt.fill('/api/v1/users?');
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-suggestions.png') });
+  await userDrawer.getByRole('button', { name: 'Restore console' }).click();
 
   await context.close();
   console.log('e2e smoke test passed');
