@@ -1,6 +1,7 @@
 /**
  * Mounts a React root inside a shadow DOM, so Okta's page CSS and ours can't
- * affect each other, and exposes `openView` to the scanner. Also hosts the API console.
+ * affect each other. Hosts the read-only view dialogs (exposing `openView` to the
+ * scanner), the API console and the chat.
  */
 import { useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -9,6 +10,7 @@ import { ApiConsole } from '../console/ApiConsole';
 import { consoleStyles } from '../console/styles';
 import { dialogStyles } from '../form/styles';
 import { watchDarkMode } from '../settings';
+import { ChatLauncher } from '../chat/ChatPanel';
 import type { ViewTarget } from '../views/types';
 import { OWN_ATTR } from './dom';
 import { ViewDialog } from './ViewDialog';
@@ -33,6 +35,7 @@ const App = () => {
       {target && (
         <ViewDialog key={target.key} target={target} onClose={() => setCurrent(undefined)} />
       )}
+      <ChatLauncher />
     </>
   );
 };

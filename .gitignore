@@ -1,8 +1,9 @@
 node_modules
 dist
 *.log
-e2e/*.png
+extension/e2e/*.png
 .env
-e2e/.profiles
-e2e/live
+extension/e2e/.profiles
+extension/e2e/live
 *.zip
+__pycache__

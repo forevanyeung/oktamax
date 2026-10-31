@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client';
 
 import { loadSettings, saveSettings, watchDarkMode, type Settings, type Theme } from '../settings';
 
+/** The service worker needs host permission to reach the chat server. */
+const requestServerAccess = (url: string) =>
+  chrome.permissions.request({ origins: [`${new URL(url).origin}/*`] });
+
 const THEMES: Array<[Theme, string]> = [
   ['light', 'Light'],
   ['dark', 'Dark'],
@@ -13,14 +17,38 @@ void watchDarkMode((dark) => (document.documentElement.dataset.theme = dark ? 'd
 
 const Popup = () => {
   const [settings, setSettings] = useState<Settings>();
+  const [serverUrl, setServerUrl] = useState('');
+  const [serverError, setServerError] = useState<string>();
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    void loadSettings().then(setSettings);
+    void loadSettings().then((s) => {
+      setSettings(s);
+      setServerUrl(s.chatServerUrl);
+    });
   }, []);
 
   const update = (change: Partial<Settings>) => {
     setSettings((current) => current && { ...current, ...change });
     void saveSettings(change);
+  };
+
+  const saveServer = async () => {
+    setServerError(undefined);
+    setSaved(false);
+    if (serverUrl) {
+      try {
+        if (!(await requestServerAccess(serverUrl))) {
+          setServerError('Permission to reach the chat server was not granted.');
+          return;
+        }
+      } catch {
+        setServerError('Enter a full URL, e.g. https://oktamax.example.com');
+        return;
+      }
+    }
+    update({ chatServerUrl: serverUrl.replace(/\/+$/, '') });
+    setSaved(true);
   };
 
   return (
@@ -31,7 +59,7 @@ const Popup = () => {
       </header>
       <p>
         Adds a view icon wherever the admin console hides an Edit button, opening the same form
-        read-only.
+        read-only, and an assistant you can ask about the org.
       </p>
       {settings && (
         <fieldset className="theme">
@@ -77,6 +105,33 @@ const Popup = () => {
             </small>
           </span>
         </label>
+      )}
+      {settings && (
+        <form
+          className="server"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void saveServer();
+          }}
+        >
+          <label htmlFor="server-url">Chat server URL</label>
+          <small>Leave empty to turn the assistant off.</small>
+          <div>
+            <input
+              id="server-url"
+              type="url"
+              value={serverUrl}
+              placeholder="https://oktamax.example.com"
+              aria-invalid={!!serverError}
+              onChange={(e) => {
+                setServerUrl(e.target.value);
+                setSaved(false);
+              }}
+            />
+            <button type="submit">{saved ? 'Saved' : 'Save'}</button>
+          </div>
+          {serverError && <small className="error">{serverError}</small>}
+        </form>
       )}
     </main>
   );

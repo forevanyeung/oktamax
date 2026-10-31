@@ -11,6 +11,7 @@
         --border: #cbcbcb;
         --accent: #4c64e1;
         --selected: #f2f3fd;
+        --error: #d93934;
       }
       :root[data-theme='dark'] {
         color-scheme: dark;
@@ -20,6 +21,7 @@
         --border: #4a4c55;
         --accent: #8b9cf6;
         --selected: #232a4d;
+        --error: #f27f7a;
       }
       body {
         margin: 0;
@@ -103,6 +105,53 @@
       .switch input {
         margin: 3px 0 0;
         accent-color: var(--accent);
+      }
+      .server {
+        margin-top: 16px;
+      }
+      .server label {
+        display: block;
+        font-weight: 600;
+      }
+      .server div {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .server input {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font: inherit;
+        color: inherit;
+        background: transparent;
+      }
+      .server input:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+        border-color: var(--accent);
+      }
+      .server input[aria-invalid='true'] {
+        border-color: var(--error);
+      }
+      .server button {
+        padding: 6px 12px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        font: inherit;
+        font-weight: 600;
+        color: var(--accent);
+        background: transparent;
+        cursor: pointer;
+      }
+      .server button:hover {
+        background: var(--selected);
+      }
+      .server .error {
+        margin-top: 4px;
+        color: var(--error);
       }
       small {
         display: block;

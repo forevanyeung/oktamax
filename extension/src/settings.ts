@@ -7,9 +7,16 @@ export interface Settings {
   theme: Theme;
   /** Show the API console drawer at the bottom of the admin console. */
   showApiConsole: boolean;
+  /** Base URL of the chat server, e.g. https://oktamax.example.com. Empty disables the chat. */
+  chatServerUrl: string;
 }
 
-const defaults: Settings = { alwaysShowViewButton: false, theme: 'system', showApiConsole: true };
+const defaults: Settings = {
+  alwaysShowViewButton: false,
+  theme: 'system',
+  showApiConsole: true,
+  chatServerUrl: 'http://localhost:8787',
+};
 
 export const loadSettings = async (): Promise<Settings> =>
   ({ ...defaults, ...(await chrome.storage.sync.get(defaults)) }) as Settings;

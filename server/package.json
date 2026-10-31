@@ -1,0 +1,33 @@
+{
+  "name": "@oktamax/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./app": "./src/app.ts",
+    "./store": "./src/chat/store.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "scripts": {
+    "dev": "vpx --watch src/index.ts",
+    "start": "vpx src/index.ts",
+    "build": "tsc --noEmit",
+    "test": "vp test",
+    "typecheck": "tsc --noEmit",
+    "verify:okta-mcp": "vpx scripts/verify-okta-mcp.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^5.0.130",
+    "@ai-sdk/mcp": "^2.0.88",
+    "@aws-sdk/credential-providers": "^3.1161.0",
+    "@hono/node-server": "^2.1.5",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@oktamax/shared": "*",
+    "ai": "^7.0.159",
+    "hono": "^4.13.14",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "^4.0.35",
+    "@types/node": "^26.6.6"
+  }
+}

@@ -24,7 +24,23 @@ export default defineManifest({
   description: pkg.description,
   version: pkg.version,
   icons,
-  permissions: ['storage'],
+  // identity: Okta sign-in for the chat server. storage: settings and chat state.
+  permissions: ['storage', 'identity'],
+  host_permissions: [
+    // Token exchange with the Okta org authorization server.
+    'https://*.okta.com/*',
+    'https://*.oktapreview.com/*',
+    'https://*.okta-emea.com/*',
+    'https://*.okta-gov.com/*',
+    // Local chat server during development.
+    'http://localhost/*',
+  ],
+  // The chat server's origin, requested from the popup when it's configured.
+  optional_host_permissions: ['https://*/*'],
+  background: {
+    service_worker: 'src/background/index.ts',
+    type: 'module',
+  },
   action: {
     default_icon: icons,
     default_popup: 'src/popup/index.html',
