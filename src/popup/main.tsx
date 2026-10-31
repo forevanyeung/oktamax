@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { loadSettings, saveSettings, type Settings } from '../settings';
+import { loadSettings, saveSettings, watchDarkMode, type Settings, type Theme } from '../settings';
+
+const THEMES: Array<[Theme, string]> = [
+  ['light', 'Light'],
+  ['dark', 'Dark'],
+  ['system', 'System'],
+];
+
+void watchDarkMode((dark) => (document.documentElement.dataset.theme = dark ? 'dark' : 'light'));
 
 const Popup = () => {
   const [settings, setSettings] = useState<Settings>();
@@ -10,9 +18,9 @@ const Popup = () => {
     void loadSettings().then(setSettings);
   }, []);
 
-  const toggle = (checked: boolean) => {
-    setSettings({ alwaysShowViewButton: checked });
-    void saveSettings({ alwaysShowViewButton: checked });
+  const update = (change: Partial<Settings>) => {
+    setSettings((current) => current && { ...current, ...change });
+    void saveSettings(change);
   };
 
   return (
@@ -26,11 +34,28 @@ const Popup = () => {
         read-only.
       </p>
       {settings && (
+        <fieldset className="theme">
+          <legend>Admin console theme</legend>
+          {THEMES.map(([value, label]) => (
+            <label key={value}>
+              <input
+                type="radio"
+                name="theme"
+                value={value}
+                checked={settings.theme === value}
+                onChange={() => update({ theme: value })}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {settings && (
         <label className="switch">
           <input
             type="checkbox"
             checked={settings.alwaysShowViewButton}
-            onChange={(e) => toggle(e.target.checked)}
+            onChange={(e) => update({ alwaysShowViewButton: e.target.checked })}
           />
           <span>
             Show view icons next to Edit buttons too

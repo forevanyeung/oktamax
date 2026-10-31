@@ -6,6 +6,7 @@ import { useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { dialogStyles } from '../form/styles';
+import { watchDarkMode } from '../settings';
 import type { ViewTarget } from '../views/types';
 import { OWN_ATTR } from './dom';
 import { ViewDialog } from './ViewDialog';
@@ -36,6 +37,8 @@ export function mountViewHost(): { openView: (target: ViewTarget) => void } {
 
   // No `contain`/positioning on the host: the dialog is `position: fixed` and must
   // be laid out against the viewport.
+  void watchDarkMode((dark) => host.setAttribute('data-theme', dark ? 'dark' : 'light'));
+
   const shadowRoot = host.attachShadow({ mode: 'open' });
   const hostStyle = document.createElement('style');
   hostStyle.textContent = `:host { all: initial; }\n${dialogStyles}`;
