@@ -170,9 +170,24 @@ export function insertAfterAnchor(anchor: Element, button: HTMLElement) {
   else anchor.append(button);
 }
 
+/** First match for `selector` in the document or any open shadow root. */
+function deepQuerySelector(
+  selector: string,
+  root: Document | ShadowRoot = document,
+): Element | null {
+  const match = root.querySelector(selector);
+  if (match) return match;
+  for (const el of root.querySelectorAll('*')) {
+    const found = el.shadowRoot && deepQuerySelector(selector, el.shadowRoot);
+    if (found) return found;
+  }
+  return null;
+}
+
 /** Add a "MAX" label next to the Okta logo in the sidenav, so it's clear the extension is active. */
 export function ensureMaxBadge() {
-  const container = document.querySelector('.sidenav-header-logo-container');
+  // The new sidenav is rendered inside an Odyssey web component's shadow root.
+  const container = deepQuerySelector('[data-se="sidenav-header-logo-container"]');
   if (!container || container.querySelector(`[${OWN_ATTR}="max-badge"]`)) return;
 
   const badge = document.createElement('span');
