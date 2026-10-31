@@ -1,3 +1,5 @@
+<img src="assets/logo.svg" width="96" alt="Okta Max logo">
+
 # Okta Max
 
 A Chrome extension for **read-only Okta admins**. Read-only admins can call the same `GET` APIs the

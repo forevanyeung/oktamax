@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
+    "icons": "node scripts/icons.mjs",
     "check": "vp check",
     "test": "vp test",
     "test:e2e": "vp build && vpx e2e/smoke.ts",

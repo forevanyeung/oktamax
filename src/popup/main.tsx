@@ -17,7 +17,10 @@ const Popup = () => {
 
   return (
     <main>
-      <h1>Okta Max</h1>
+      <header>
+        <img src="/icons/icon-32.png" width={32} height={32} alt="" />
+        <h1>Okta Max</h1>
+      </header>
       <p>
         Adds a view icon wherever the admin console hides an Edit button, opening the same form
         read-only.
