@@ -44,6 +44,44 @@ export interface App {
   };
 }
 
+/** `/api/v1/apps/{appId}/users/{userId}`: a user's assignment to an app. */
+export interface AppUser {
+  id: string;
+  /** USER: assigned directly (or overriding a group); GROUP: through a group assignment. */
+  scope: 'USER' | 'GROUP';
+  status?: string;
+  credentials?: { userName?: string };
+  profile?: Record<string, unknown>;
+  _links?: { group?: { name?: string } };
+  _embedded?: { user?: User };
+}
+
+/** `/api/v1/apps/{appId}/groups/{groupId}`: a group's assignment to an app. */
+export interface AppGroup {
+  id: string;
+  priority?: number;
+  profile?: Record<string, unknown>;
+  _embedded?: { group?: Group };
+}
+
+export interface SchemaProperty {
+  title?: string;
+  type?: string;
+  /** SELF: can only be set per user; NONE: can also be set on a group assignment. */
+  scope?: 'SELF' | 'NONE';
+  enum?: unknown[];
+  oneOf?: Array<{ const: unknown; title: string }>;
+  items?: { enum?: unknown[]; oneOf?: Array<{ const: unknown; title: string }> };
+}
+
+/** `/api/v1/meta/schemas/apps/{appId}/default`: the app user profile. */
+export interface AppUserSchema {
+  definitions?: {
+    base?: { properties?: Record<string, SchemaProperty> };
+    custom?: { properties?: Record<string, SchemaProperty> };
+  };
+}
+
 export interface SamlSignOn {
   ssoAcsUrl?: string;
   recipient?: string;

@@ -2,12 +2,16 @@ import { findSections } from '../../content/dom';
 import { get } from '../../okta/api';
 import type { App } from '../../okta/types';
 import type { ViewProvider } from '../types';
+import { assignmentTargets } from './assignments';
 import { samlSettingsView } from './saml';
 
 // /admin/app/{appName}/instance/{appId}/#tab-general
 const APP_PATH = /^\/admin\/app\/[^/]+\/instance\/([^/]+)/;
 
 /**
+ * Assignments: each user / group row's pencil opens "Edit User/Group Assignment",
+ * which read-only admins don't get.
+ *
  * Most app sections (App Settings, Sign On Settings, OIDC Client Credentials
  * and General Settings) are already shown read-only on the page. SAML is the
  * exception: its Edit button opens a wizard with settings the page leaves out.
@@ -20,6 +24,7 @@ export const appsProvider: ViewProvider = {
     if (!appId) return [];
 
     const tab = url.hash.match(/^#tab-([\w-]+)/)?.[1] ?? 'general';
+    if (tab === 'assignments') return assignmentTargets(appId);
     if (tab !== 'general') return [];
 
     const app = await get<App>(`/api/v1/apps/${appId}`);
