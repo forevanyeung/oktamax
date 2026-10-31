@@ -6,7 +6,13 @@
  * an Edit control, and add/remove our view buttons accordingly.
  */
 import type { ViewProvider, ViewTarget } from '../views/types';
-import { createViewButton, hasEditControl, insertAfterAnchor, OWN_ATTR } from './dom';
+import {
+  createViewButton,
+  ensureMaxBadge,
+  hasEditControl,
+  insertAfterAnchor,
+  OWN_ATTR,
+} from './dom';
 
 interface ScannerOptions {
   providers: ViewProvider[];
@@ -20,6 +26,7 @@ export function startScanner({ providers, openView, alwaysShow }: ScannerOptions
   const warned = new Set<string>();
 
   async function scan() {
+    ensureMaxBadge();
     const url = new URL(location.href);
     const seen = new Set<string>();
 
