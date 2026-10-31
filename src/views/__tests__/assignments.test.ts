@@ -59,16 +59,30 @@ describe('userAssignmentView', () => {
         profile: { role: 'admin', costCenter: 'R&D', licensed: true },
       },
       '/api/v1/meta/schemas/apps/0oa1/default': schema,
+      '/api/v1/apps/0oa1/groups': [
+        { id: '00g2', priority: 1 },
+        { id: '00g1', priority: 0 },
+        { id: '00g3', priority: 2 },
+      ],
+      '/api/v1/users/00u1/groups': [
+        { id: '00g2', profile: { name: 'Contractors' } },
+        { id: '00g1', profile: { name: 'Engineering' } },
+      ],
     });
     const view = await userAssignmentView('0oa1', '00u1');
     expect(labels(view)).toEqual([
       'Assignment master',
+      'Assigned through groups',
       'Username',
       'Role',
       'Cost center',
       'Licensed',
     ]);
     expect(field(view, 'Assignment master')).toMatchObject({ type: 'radio', value: 'GROUP' });
+    expect(field(view, 'Assigned through groups')).toMatchObject({
+      values: ['Engineering', 'Contractors'],
+      hint: 'The profile comes from Engineering, the highest-priority group.',
+    });
     expect(field(view, 'Username')).toMatchObject({ type: 'text', value: 'ada@example.com' });
     expect(field(view, 'Role')).toMatchObject({ type: 'select', value: 'admin' });
     expect(field(view, 'Licensed')).toMatchObject({ type: 'checkbox', checked: true });
@@ -90,9 +104,9 @@ describe('userAssignmentView', () => {
       '/api/v1/apps/0oa3/groups': [{ id: '00g1' }],
       '/api/v1/users/00u3/groups': [{ id: '00g1', profile: { name: 'Assigned' } }],
     });
-    expect(field(await userAssignmentView('0oa3', '00u3'), 'Assignment master')).toMatchObject({
-      value: 'USER',
-    });
+    const view = await userAssignmentView('0oa3', '00u3');
+    expect(field(view, 'Assignment master')).toMatchObject({ value: 'USER' });
+    expect(field(view, 'Assigned through groups')).toMatchObject({ values: ['Assigned'] });
   });
 });
 

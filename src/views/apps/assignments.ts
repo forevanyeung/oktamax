@@ -50,17 +50,23 @@ function attributeField(key: string, p: SchemaProperty, value: unknown): Field {
   return options ? select(label, str, options) : text(label, str);
 }
 
-/** Is the user also in one of the app's assigned groups (so Okta offers "Assignment master")? */
-async function inAssignedGroup(appId: string, appUser: AppUser): Promise<boolean> {
-  if (appUser.scope === 'GROUP') return true;
+/**
+ * The app's assigned groups the user is in, by assignment priority (Okta takes
+ * the user's profile from the first). Falls back to the group the API reports.
+ */
+async function assignedGroups(appId: string, appUser: AppUser): Promise<string[]> {
+  const fallback = appUser._links?.group?.name ? [appUser._links.group.name] : [];
   try {
     const [assigned, memberOf] = await Promise.all([
       getAll<AppGroup>(`/api/v1/apps/${appId}/groups?limit=200`),
       getAll<Group>(`/api/v1/users/${appUser.id}/groups?limit=200`),
     ]);
-    return memberOf.some((g) => assigned.some((a) => a.id === g.id));
+    const names = assigned
+      .toSorted((a, b) => (a.priority ?? Infinity) - (b.priority ?? Infinity))
+      .flatMap((a) => memberOf.find((g) => g.id === a.id)?.profile.name ?? []);
+    return names.length ? names : fallback;
   } catch {
-    return false;
+    return fallback;
   }
 }
 
@@ -70,13 +76,24 @@ export async function userAssignmentView(appId: string, userId: string): Promise
     get<AppUser>(`/api/v1/apps/${appId}/users/${userId}`),
     get<AppUserSchema>(`/api/v1/meta/schemas/apps/${appId}/default`),
   ]);
-  const groupAssigned = await inAssignedGroup(appId, appUser);
+  const groups = await assignedGroups(appId, appUser);
 
   return {
     width: 680,
     sections: [
-      groupAssigned &&
-        section(undefined, [radio('Assignment master', appUser.scope, ASSIGNMENT_MASTER)]),
+      // Okta only offers "Assignment master" to users who are in an assigned group.
+      (groups.length > 0 || appUser.scope === 'GROUP') &&
+        section(undefined, [
+          radio('Assignment master', appUser.scope, ASSIGNMENT_MASTER),
+          // Not in Okta's dialog: which assigned groups give this user access.
+          tags(
+            'Assigned through groups',
+            groups,
+            groups.length > 1 && appUser.scope === 'GROUP'
+              ? `The profile comes from ${groups[0]}, the highest-priority group.`
+              : undefined,
+          ),
+        ]),
       section(
         undefined,
         schemaProperties(schema).map(([key, p]) =>
