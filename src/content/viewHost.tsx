@@ -1,11 +1,11 @@
 /**
- * Mounts a React + Odyssey root inside a shadow DOM, so Okta's page CSS and
- * ours can't affect each other, and exposes `openView` to the scanner.
+ * Mounts a React root inside a shadow DOM, so Okta's page CSS and ours can't
+ * affect each other, and exposes `openView` to the scanner.
  */
-import { OdysseyProvider } from '@okta/odyssey-react-mui';
 import { useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { dialogStyles } from '../form/styles';
 import type { ViewTarget } from '../views/types';
 import { OWN_ATTR } from './dom';
 import { ViewDialog } from './ViewDialog';
@@ -38,16 +38,11 @@ export function mountViewHost(): { openView: (target: ViewTarget) => void } {
   // be laid out against the viewport.
   const shadowRoot = host.attachShadow({ mode: 'open' });
   const hostStyle = document.createElement('style');
-  hostStyle.textContent = ':host { all: initial; }';
-  const emotionRootElement = document.createElement('div');
+  hostStyle.textContent = `:host { all: initial; }\n${dialogStyles}`;
   const appRootElement = document.createElement('div');
-  shadowRoot.append(hostStyle, emotionRootElement, appRootElement);
+  shadowRoot.append(hostStyle, appRootElement);
 
-  createRoot(appRootElement).render(
-    <OdysseyProvider emotionRootElement={emotionRootElement} shadowRootElement={appRootElement}>
-      <App />
-    </OdysseyProvider>,
-  );
+  createRoot(appRootElement).render(<App />);
 
   return { openView: setCurrent };
 }

@@ -1,4 +1,3 @@
-import { Box, Heading6, OdysseyProvider, Paragraph, Switch } from '@okta/odyssey-react-mui';
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -11,33 +10,33 @@ const Popup = () => {
     void loadSettings().then(setSettings);
   }, []);
 
-  const toggle = ({ checked }: { checked: boolean }) => {
+  const toggle = (checked: boolean) => {
     setSettings({ alwaysShowViewButton: checked });
     void saveSettings({ alwaysShowViewButton: checked });
   };
 
   return (
-    <Box sx={{ padding: 4 }}>
-      <Heading6>Okta Max</Heading6>
-      <Paragraph>
+    <main>
+      <h1>Okta Max</h1>
+      <p>
         Adds a view icon wherever the admin console hides an Edit button, opening the same form
         read-only.
-      </Paragraph>
+      </p>
       {settings && (
-        <Switch
-          label="Show view icons next to Edit buttons too"
-          hint="Useful for comparing against the real edit dialogs as a full admin."
-          value="alwaysShowViewButton"
-          isChecked={settings.alwaysShowViewButton}
-          onChange={toggle}
-        />
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={settings.alwaysShowViewButton}
+            onChange={(e) => toggle(e.target.checked)}
+          />
+          <span>
+            Show view icons next to Edit buttons too
+            <small>Useful for comparing against the real edit dialogs as a full admin.</small>
+          </span>
+        </label>
       )}
-    </Box>
+    </main>
   );
 };
 
-createRoot(document.getElementById('root')!).render(
-  <OdysseyProvider>
-    <Popup />
-  </OdysseyProvider>,
-);
+createRoot(document.getElementById('root')!).render(<Popup />);

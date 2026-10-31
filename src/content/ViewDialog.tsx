@@ -1,5 +1,4 @@
-import { Button, Callout, CircularProgress, Dialog } from '@okta/odyssey-react-mui';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import type { FormView } from '../form/schema';
 import { ReadOnlyForm } from '../form/ReadOnlyForm';
@@ -10,8 +9,13 @@ type State =
   | { status: 'loaded'; view: FormView }
   | { status: 'error'; message: string };
 
+/**
+ * Laid out like Okta's own edit dialogs, and like the "View Rule" dialog Okta
+ * shows for active group rules: same form, nothing editable, a single Close.
+ */
 export const ViewDialog = ({ target, onClose }: { target: ViewTarget; onClose: () => void }) => {
   const [state, setState] = useState<State>({ status: 'loading' });
+  const titleId = useId();
 
   useEffect(() => {
     let cancelled = false;
@@ -26,21 +30,36 @@ export const ViewDialog = ({ target, onClose }: { target: ViewTarget; onClose: (
     };
   }, [target]);
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const width = state.status === 'loaded' ? (state.view.width ?? 900) : 650;
+
   return (
-    <Dialog
-      isOpen
-      title={target.title}
-      onClose={onClose}
-      // Okta's edit dialogs have Save + Cancel; read-only gets just the secondary button.
-      secondaryCallToActionComponent={
-        <Button variant="secondary" label="Close" onClick={onClose} />
-      }
-    >
-      {state.status === 'loading' && <CircularProgress ariaLabel="Loading" />}
-      {state.status === 'error' && (
-        <Callout severity="error" title="Couldn't load this view" text={state.message} />
-      )}
-      {state.status === 'loaded' && <ReadOnlyForm view={state.view} />}
-    </Dialog>
+    <>
+      <div className="overlay" onClick={onClose} />
+      <div className="dialog" role="dialog" aria-modal aria-labelledby={titleId} style={{ width }}>
+        <h2 className="title" id={titleId}>
+          {target.title}
+        </h2>
+        <div className="content">
+          {state.status === 'loading' && <p className="hint">Loading…</p>}
+          {state.status === 'error' && (
+            <div className="error" role="alert">
+              Couldn't load this view: {state.message}
+            </div>
+          )}
+          {state.status === 'loaded' && <ReadOnlyForm view={state.view} />}
+        </div>
+        <div className="buttons">
+          <button type="button" className="button-clear" onClick={onClose} autoFocus>
+            Close
+          </button>
+        </div>
+      </div>
+    </>
   );
 };

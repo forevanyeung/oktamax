@@ -3,8 +3,8 @@
 A Chrome extension for **read-only Okta admins**. Read-only admins can call the same `GET` APIs the
 admin console uses, but much of that data only appears in dialogs behind an **Edit** button, which
 the console hides from them. Wherever that button is missing, this extension adds a 👁 icon where
-the Edit button would be. It opens the same form, built with Okta's own
-[Odyssey](https://github.com/okta/odyssey) design system, with every field read-only. Settings the
+the Edit button would be. It opens the same form, laid out and styled like Okta's own edit dialog,
+with every field read-only. Settings the
 console already shows read-only admins on the page (App Settings, Sign On settings, OIDC settings,
 policy details) don't get one.
 
@@ -38,7 +38,7 @@ After that, `git pull` is enough: the dev server rebuilds and the extension relo
 
 The toolbar popup has one setting: **show view icons next to Edit buttons too**. Turn it on as a
 full admin to compare the view dialogs with the real edit dialogs side by side. Where Edit is an item
-of an **Actions** menu, a **View (Okta Max)** item is added to the same menu.
+of an **Actions** menu, a **View** item is added to the same menu (its tooltip says it comes from Okta Max).
 
 ## What's covered
 
@@ -62,11 +62,12 @@ src/
     index.tsx        entry point: mounts the dialog host and starts the scanner
     scanner.ts       re-scans on DOM/URL changes; adds/removes view buttons
     dom.ts           finds sections by heading text and rows by object name; detects Edit controls
-    viewHost.tsx     shadow DOM + OdysseyProvider
+    viewHost.tsx     shadow DOM + React root
     ViewDialog.tsx   loads the data and shows the read-only form
   form/
     schema.ts        declarative form description + builders (text, radio, tags, ...)
-    ReadOnlyForm.tsx renders the schema with Odyssey components, all `isReadOnly`
+    ReadOnlyForm.tsx renders the schema like Okta's edit dialogs, nothing editable
+    styles.ts        the dialog CSS, measured from the console's own edit dialogs
   okta/              GET-only API client, ID → name lookups, API types
   views/             one "provider" per admin console area + the API → form mappings
 ```

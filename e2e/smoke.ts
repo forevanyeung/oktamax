@@ -121,7 +121,7 @@ async function main() {
   );
 
   await viewButton(page, 'zone:nzo2').click();
-  const zoneDialog = page.getByRole('dialog', { name: 'View Zone' });
+  const zoneDialog = page.getByRole('dialog', { name: 'View Dynamic Zone' });
   await zoneDialog.getByLabel('Zone name').waitFor();
   assert.equal(await zoneDialog.getByLabel('Zone name').inputValue(), 'Blocked countries');
   assert.equal(await zoneDialog.getByLabel('Zone name').getAttribute('readonly'), '');
@@ -146,7 +146,7 @@ async function main() {
 
   // Every text input in the dialog is read-only.
   const editable = await samlDialog
-    .locator('input[type="text"]:not([readonly]), textarea:not([readonly])')
+    .locator('input:not([readonly]), textarea:not([readonly])')
     .evaluateAll((els) => els.filter((e) => !(e as HTMLElement).hidden).length);
   assert.equal(editable, 0, 'no editable text inputs');
 

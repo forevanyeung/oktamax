@@ -146,8 +146,8 @@ export function createViewButton(
   button.type = 'button';
   button.setAttribute(OWN_ATTR, 'view-button');
   button.dataset.oktamaxKey = key;
-  button.title = `${label} (read-only)`;
-  button.setAttribute('aria-label', button.title);
+  button.title = `${label} (read-only, added by Okta Max)`;
+  button.setAttribute('aria-label', `${label} (read-only)`);
   button.innerHTML = EYE_ICON;
   Object.assign(button.style, {
     display: 'inline-flex',
@@ -186,11 +186,11 @@ export function createViewMenuItem(
   item.removeAttribute('data-se');
   item.setAttribute(OWN_ATTR, 'view-button');
   item.dataset.oktamaxKey = key;
-  item.title = `${label} (read-only)`;
+  item.title = `${label} (read-only, added by Okta Max)`;
 
   const link = (editItem.querySelector('a')?.cloneNode(false) as HTMLElement) ?? item;
   link.removeAttribute('data-se');
-  link.innerHTML = '<p class="option-title">View (Okta Max)</p>';
+  link.innerHTML = '<p class="option-title">View</p>';
   // Okta leaves room on the left for item icons; put ours there if the menu has icons.
   if (editItem.querySelector('.icon')) {
     link.style.position = 'relative';
