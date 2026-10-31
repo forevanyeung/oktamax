@@ -18,7 +18,10 @@ const Popup = () => {
 
   return (
     <Box sx={{ padding: 4 }}>
-      <Heading6>Okta Max</Heading6>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <img src="/icons/icon-32.png" width={32} height={32} alt="" />
+        <Heading6>Okta Max</Heading6>
+      </Box>
       <Paragraph>
         Adds a view icon wherever the admin console hides an Edit button, opening the same form
         read-only.
