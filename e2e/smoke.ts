@@ -1,7 +1,8 @@
 /**
  * End-to-end smoke test: loads the built extension into Chromium, serves a
  * mock admin console page plus API fixtures, and checks that
- *  - view buttons appear only where there is no Edit control,
+ *  - view buttons appear only where there is no Edit control, in the row's
+ *    actions cell when it has one,
  *  - the dialog renders read-only fields,
  *  - the extension never sends anything but GET.
  *
@@ -22,11 +23,10 @@ const pages: Record<string, string> = {
     <h1>Networks</h1>
     <table>
       <tr><td><a href="#">Office</a></td><td>IP</td><td><button>Edit</button></td></tr>
-      <tr><td><a href="#">Blocked countries</a></td><td>Dynamic</td><td></td></tr>
+      <tr><td><a href="#">Blocked countries</a></td><td>Dynamic</td><td><div class="zone-actions"></div></td></tr>
     </table>`,
   '/admin/app/acme_app_1/instance/0oa1/': `
     <h1>Acme</h1>
-    <section><div><h2>App Settings</h2><a href="#">Edit</a></div><p>Application label: Acme</p></section>
     <section><div><h2>SAML Settings</h2></div><p>Single sign-on URL: https://sp.example.com/acs</p></section>`,
 };
 
@@ -114,9 +114,14 @@ async function main() {
   await page.goto(`${ORIGIN}/admin/access/networks`);
   await viewButton(page, 'zone:nzo2').waitFor();
   assert.equal(await viewButton(page, 'zone:nzo1').count(), 0, 'row with Edit gets no view button');
+  assert.equal(
+    await viewButton(page, 'zone:nzo2').evaluate((el) => el.parentElement?.className),
+    'zone-actions',
+    "view button goes in the row's actions cell",
+  );
 
   await viewButton(page, 'zone:nzo2').click();
-  const zoneDialog = page.getByRole('dialog', { name: 'View Zone' });
+  const zoneDialog = page.getByRole('dialog', { name: 'View Dynamic Zone' });
   await zoneDialog.getByLabel('Zone name').waitFor();
   assert.equal(await zoneDialog.getByLabel('Zone name').inputValue(), 'Blocked countries');
   assert.equal(await zoneDialog.getByLabel('Zone name').getAttribute('readonly'), '');
@@ -127,11 +132,6 @@ async function main() {
   // --- sections --------------------------------------------------------------
   await page.goto(`${ORIGIN}/admin/app/acme_app_1/instance/0oa1/#tab-general`);
   await viewButton(page, 'app:0oa1:general:SAML Settings').waitFor();
-  assert.equal(
-    await viewButton(page, 'app:0oa1:general:App Settings').count(),
-    0,
-    'section with Edit gets no view button',
-  );
 
   await viewButton(page, 'app:0oa1:general:SAML Settings').click();
   const samlDialog = page.getByRole('dialog', { name: 'View SAML Integration' });
@@ -146,7 +146,7 @@ async function main() {
 
   // Every text input in the dialog is read-only.
   const editable = await samlDialog
-    .locator('input[type="text"]:not([readonly]), textarea:not([readonly])')
+    .locator('input:not([readonly]), textarea:not([readonly])')
     .evaluateAll((els) => els.filter((e) => !(e as HTMLElement).hidden).length);
   assert.equal(editable, 0, 'no editable text inputs');
 

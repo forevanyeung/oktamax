@@ -4,9 +4,11 @@
 
 A Chrome extension for **read-only Okta admins**. Read-only admins can call the same `GET` APIs the
 admin console uses, but much of that data only appears in dialogs behind an **Edit** button, which
-the console hides from them. Wherever that button is missing, this extension adds a 👁 icon. It
-opens the same form, built with Okta's own [Odyssey](https://github.com/okta/odyssey) design system,
-with every field read-only.
+the console hides from them. Wherever that button is missing, this extension adds a 👁 icon where
+the Edit button would be. It opens the same form, laid out and styled like Okta's own edit dialog,
+with every field read-only. Settings the
+console already shows read-only admins on the page (App Settings, Sign On settings, OIDC settings,
+policy details) don't get one.
 
 - Only ever sends `GET` requests (`src/okta/api.ts` has no other method).
 - Uses the admin's existing session. No tokens, no extra permissions beyond `storage`.
@@ -37,20 +39,20 @@ npm run dev            # leave running; load dist/ as unpacked once
 After that, `git pull` is enough: the dev server rebuilds and the extension reloads itself.
 
 The toolbar popup has one setting: **show view icons next to Edit buttons too**. Turn it on as a
-full admin to compare the view dialogs with the real edit dialogs side by side.
+full admin to compare the view dialogs with the real edit dialogs side by side. Where Edit is an item
+of an **Actions** menu, a **View** item is added to the same menu (its tooltip says it comes from Okta Max).
 
 ## What's covered
 
-| Admin console page                   | Edit dialog it mirrors                                                                          |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| Applications › app › General         | App Settings, SAML Settings (Edit SAML Integration), OIDC Client Credentials / General Settings |
-| Applications › app › Sign On         | Settings (sign-on method, credentials details)                                                  |
-| Directory › Groups › Rules           | Edit Rule                                                                                       |
-| Security › Networks                  | Edit Zone (IP, dynamic, enhanced dynamic)                                                       |
-| Security › Authentication Policies   | Edit Rule (and policy name/description/groups)                                                  |
-| Security › Global Session Policy     | Edit Rule, Edit Policy                                                                          |
-| Security › Authenticators › Password | Edit Rule, Edit Policy (complexity, age, lockout)                                               |
-| Security › Authenticators            | Authenticator settings (rendered generically)                                                   |
+| Admin console page                   | Edit dialog it mirrors                        |
+| ------------------------------------ | --------------------------------------------- |
+| Applications › app › General         | SAML Settings (Edit SAML Integration)         |
+| Directory › Groups › Rules           | Edit Rule                                     |
+| Security › Networks                  | Edit Zone (IP, dynamic, enhanced dynamic)     |
+| Security › Authentication Policies   | Edit Rule                                     |
+| Security › Global Session Policy     | Edit Rule                                     |
+| Security › Authenticators › Password | Edit Rule                                     |
+| Security › Authenticators            | Authenticator settings (rendered generically) |
 
 Every dialog also has a collapsed **API response (JSON)** section, for fields the form doesn't map.
 
@@ -62,11 +64,12 @@ src/
     index.tsx        entry point: mounts the dialog host and starts the scanner
     scanner.ts       re-scans on DOM/URL changes; adds/removes view buttons
     dom.ts           finds sections by heading text and rows by object name; detects Edit controls
-    viewHost.tsx     shadow DOM + OdysseyProvider
+    viewHost.tsx     shadow DOM + React root
     ViewDialog.tsx   loads the data and shows the read-only form
   form/
     schema.ts        declarative form description + builders (text, radio, tags, ...)
-    ReadOnlyForm.tsx renders the schema with Odyssey components, all `isReadOnly`
+    ReadOnlyForm.tsx renders the schema like Okta's edit dialogs, nothing editable
+    styles.ts        the dialog CSS, measured from the console's own edit dialogs
   okta/              GET-only API client, ID → name lookups, API types
   views/             one "provider" per admin console area + the API → form mappings
 ```
@@ -91,7 +94,9 @@ doesn't depend on Okta's CSS classes. A **provider** (`src/views/types.ts`) does
    ```
 
 A view icon is added unless the target's part of the page already has an Edit control (by text,
-`aria-label`, `title`, or `data-se`), either visible or inside a collapsed "Actions" menu.
+`aria-label`, `title`, or `data-se`), either visible or inside a collapsed "Actions" menu. It goes
+where Okta puts Edit: the target's optional `actions` element (a row's actions cell, a section's
+button bar, which Okta often renders empty for read-only admins), or else after `anchor`.
 
 ### Adding a page
 

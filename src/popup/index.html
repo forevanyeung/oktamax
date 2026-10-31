@@ -3,8 +3,54 @@
   <head>
     <meta charset="UTF-8" />
     <title>Okta Max</title>
+    <style>
+      body {
+        margin: 0;
+        width: 320px;
+        font:
+          14px/1.5 Inter,
+          -apple-system,
+          system-ui,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        color: #272727;
+      }
+      main {
+        padding: 16px;
+      }
+      header {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 0 0 8px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      .switch {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        cursor: pointer;
+      }
+      .switch input {
+        margin: 3px 0 0;
+        accent-color: #4c64e1;
+      }
+      small {
+        display: block;
+        color: #6e6e6e;
+        font-size: 13px;
+      }
+    </style>
   </head>
-  <body style="margin: 0; width: 320px">
+  <body>
     <div id="root"></div>
     <script type="module" src="./main.tsx"></script>
   </body>

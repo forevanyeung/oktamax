@@ -14,7 +14,6 @@
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p e2e"
   },
   "dependencies": {
-    "@okta/odyssey-react-mui": "^1.72.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

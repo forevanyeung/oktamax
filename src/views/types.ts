@@ -6,8 +6,13 @@ export interface ViewTarget {
   key: string;
   /** Dialog title, mirroring Okta's edit dialog ("Edit Rule" -> "View Rule"). */
   title: string;
-  /** The view button is placed right after this element (a heading or a row's name). */
+  /** The view button is placed right after this element (a heading or a row's name)... */
   anchor: Element;
+  /**
+   * ...unless the page has a place for this object's actions (a row's actions cell, a
+   * section's button bar). Okta renders some of these empty for read-only admins.
+   */
+  actions?: Element | null;
   /** The area Okta renders its Edit control in. If it has one, no view button is needed. */
   scope: Element;
   /** Fetch the data and describe the read-only form. Only called when the button is clicked. */
