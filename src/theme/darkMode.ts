@@ -184,22 +184,55 @@ const byHref = new Map<string, string>();
 const HASHED = /[.-][0-9a-f]{8,}\.css$|\/\d+\.\d+\.\d+\//;
 const STORAGE_KEY = 'darkModeCss';
 // A hash of this code, set in vite.config.ts; empty in dev, where nothing is kept.
-declare const __THEME_CACHE_KEY__: string;
+// CRXJS's dev build of `.iife.ts` scripts skips `define`, leaving it undeclared there.
+declare const __THEME_CACHE_KEY__: string | undefined;
+const CACHE_KEY = typeof __THEME_CACHE_KEY__ === 'string' ? __THEME_CACHE_KEY__ : '';
+
+// When each sheet was last on a page. Every Okta release brings new hashed URLs, so
+// sheets unused for a while are dropped; otherwise the cache outgrows storage's quota.
+const usedAt = new Map<string, number>();
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_AGE_MS = 14 * DAY_MS;
+const isFresh = (href: string) => Date.now() - (usedAt.get(href) ?? 0) < MAX_AGE_MS;
+
+function markUsed(href: string) {
+  const last = usedAt.get(href);
+  usedAt.set(href, Date.now());
+  // Saved about daily for sheets that are still in use, so they don't age out.
+  if (last !== undefined && Date.now() - last > DAY_MS) save();
+}
+
+interface SavedCss {
+  build: string;
+  css: Record<string, string>;
+  used?: Record<string, number>;
+}
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function save() {
-  if (!__THEME_CACHE_KEY__) return;
+  if (!CACHE_KEY) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const css = Object.fromEntries([...byHref].filter(([href]) => HASHED.test(href)));
-    void chrome.storage.local.set({ [STORAGE_KEY]: { build: __THEME_CACHE_KEY__, css } });
+    // Reloading the extension leaves this script running without access to storage.
+    if (!chrome.runtime?.id) return;
+    const hrefs = [...byHref.keys()].filter((href) => HASHED.test(href) && isFresh(href));
+    const saved: SavedCss = {
+      build: CACHE_KEY,
+      css: Object.fromEntries(hrefs.map((href) => [href, byHref.get(href)!])),
+      used: Object.fromEntries(hrefs.map((href) => [href, usedAt.get(href)!])),
+    };
+    chrome.storage.local.set({ [STORAGE_KEY]: saved }).catch(() => {});
   }, 2000);
 }
 
 const restored = chrome.storage.local.get(STORAGE_KEY).then((items) => {
-  const saved = items[STORAGE_KEY] as { build: string; css: Record<string, string> } | undefined;
-  if (!__THEME_CACHE_KEY__ || saved?.build !== __THEME_CACHE_KEY__) return;
-  for (const [href, css] of Object.entries(saved.css)) if (!byHref.has(href)) byHref.set(href, css);
+  const saved = items[STORAGE_KEY] as SavedCss | undefined;
+  if (!CACHE_KEY || saved?.build !== CACHE_KEY) return;
+  for (const [href, css] of Object.entries(saved.css)) {
+    if (byHref.has(href)) continue;
+    byHref.set(href, css);
+    if (!usedAt.has(href)) usedAt.set(href, saved.used?.[href] ?? Date.now());
+  }
 });
 
 // Sheets the CSSOM won't expose (cross-origin, no `crossorigin` attribute) are fetched.
@@ -224,6 +257,7 @@ type StyleOwner = HTMLLinkElement | HTMLStyleElement | SVGStyleElement;
 function ownerCss(owner: StyleOwner, onFetched: () => void): string {
   const href = owner instanceof HTMLLinkElement ? owner.href : '';
   const sheet = owner.sheet as CSSStyleSheet | null;
+  if (href) markUsed(href);
   let css = '';
   if (href && HASHED.test(href) && byHref.has(href)) css = byHref.get(href)!;
   else if (sheet) {
