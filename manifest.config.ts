@@ -32,6 +32,17 @@ export default defineManifest({
   content_scripts: [
     {
       matches: adminConsoleMatches,
+      js: ['src/content/pageWorld.iife.ts'],
+      run_at: 'document_start',
+      world: 'MAIN',
+    },
+    {
+      matches: adminConsoleMatches,
+      js: ['src/content/theme.iife.ts'],
+      run_at: 'document_start',
+    },
+    {
+      matches: adminConsoleMatches,
       js: ['src/content/index.tsx'],
       run_at: 'document_idle',
     },

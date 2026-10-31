@@ -160,11 +160,14 @@ export function createViewButton(
     border: '0',
     borderRadius: '4px',
     background: 'transparent',
-    color: '#1662dd',
+    color: 'var(--oktamax-accent, #1662dd)',
     cursor: 'pointer',
     lineHeight: '0',
   } satisfies Partial<CSSStyleDeclaration>);
-  button.addEventListener('mouseenter', () => (button.style.background = '#ebf1fc'));
+  button.addEventListener(
+    'mouseenter',
+    () => (button.style.background = 'var(--oktamax-accent-hover, #ebf1fc)'),
+  );
   button.addEventListener('mouseleave', () => (button.style.background = 'transparent'));
   button.addEventListener('click', (event) => {
     // Rows are often clickable/expandable; the icon should only open the dialog.
@@ -198,7 +201,7 @@ export function createViewMenuItem(
     link.style.position = 'relative';
     link.insertAdjacentHTML(
       'afterbegin',
-      `<span style="position: absolute; left: 12px; color: #1662dd; line-height: 0">${EYE_ICON}</span>`,
+      `<span style="position: absolute; left: 12px; color: var(--oktamax-accent, #1662dd); line-height: 0">${EYE_ICON}</span>`,
     );
   }
   if (link !== item) item.append(link);

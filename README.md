@@ -38,9 +38,15 @@ npm run dev            # leave running; load dist/ as unpacked once
 
 After that, `git pull` is enough: the dev server rebuilds and the extension reloads itself.
 
-The toolbar popup has one setting: **show view icons next to Edit buttons too**. Turn it on as a
-full admin to compare the view dialogs with the real edit dialogs side by side. Where Edit is an item
-of an **Actions** menu, a **View** item is added to the same menu (its tooltip says it comes from Okta Max).
+The toolbar popup has two settings:
+
+- **Admin console theme**: Light, Dark, or System (follows the OS, the default). Dark mode recolors
+  the whole admin console, keeping Okta's own colors and hues with a dark mood.
+- **Show view icons next to Edit buttons too**: turn it on as a full admin to compare the view
+  dialogs with the real edit dialogs side by side.
+
+Where Edit is an item of an **Actions** menu, a **View** item is added to the same menu (its tooltip
+says it comes from Okta Max).
 
 ## What's covered
 
@@ -63,6 +69,8 @@ Every dialog also has a collapsed **API response (JSON)** section, for fields th
 src/
   content/
     index.tsx        entry point: mounts the dialog host and starts the scanner
+    theme.iife.ts    turns dark mode on and off with the setting
+    pageWorld.iife.ts page-world hooks: keeps loads dark until dark mode is ready
     scanner.ts       re-scans on DOM/URL changes; adds/removes view buttons
     dom.ts           finds sections by heading text and rows by object name; detects Edit controls
     viewHost.tsx     shadow DOM + React root
@@ -72,6 +80,9 @@ src/
     ReadOnlyForm.tsx renders the schema like Okta's edit dialogs, nothing editable
     styles.ts        the dialog CSS, measured from the console's own edit dialogs
   okta/              GET-only API client, ID → name lookups, API types
+  theme/
+    palette.ts       the dark palette, and how the console's light colors map onto it
+    darkMode.ts      rewrites the colors of every stylesheet on the page and adopts the result
   views/             one "provider" per admin console area + the API → form mappings
 ```
 
@@ -98,6 +109,34 @@ A view icon is added unless the target's part of the page already has an Edit co
 `aria-label`, `title`, or `data-se`), either visible or inside a collapsed "Actions" menu. It goes
 where Okta puts Edit: the target's optional `actions` element (a row's actions cell, a section's
 button bar, which Okta often renders empty for read-only admins), or else after `anchor`.
+
+### Dark mode
+
+Okta's console mixes Odyssey (MUI + emotion), legacy Courage CSS and CSS modules, and its nav shell
+lives in shadow roots, so dark mode doesn't restyle widgets one by one. `theme/darkMode.ts` reads
+every stylesheet in the document and in each open shadow root (fetching cross-origin ones the CSSOM
+won't expose), rewrites each rule's colors with `theme/palette.ts`, and adopts a dark copy of each
+sheet after the page's own: same selectors, same order, so the dark color applies exactly where the
+light one did. The console's most used colors map to hand-picked dark tokens (`TOKENS`); anything
+else is converted by role (background, text, border, shadow) in OKLCH, keeping its hue. SVG
+`fill`/`stroke` attributes and inline colors are matched by value.
+
+Avoiding a light flash on page loads takes these pieces:
+
+- Both scripts that run at `document_start` are named `*.iife.ts`, so CRXJS injects them as plain
+  scripts. Otherwise it loads content scripts through an async `import()` (in dev, also via the dev
+  server for HMR), which lands after the console's first paint. No Chrome API can rewrite a page's
+  stylesheets for us (`content_scripts.css` and `registerContentScripts` take only packaged files,
+  `scripting.insertCSS` races the first paint, and `declarativeNetRequest` can't change response
+  bodies), so timing the content scripts is what matters.
+- `content/pageWorld.iife.ts` runs in the page's JS world. If the console was dark last time (a
+  flag in the console's `localStorage`), it adopts a sheet that paints the canvas dark and hides the
+  page until dark mode is ready (at most 1.5 s).
+- It also announces `insertRule` calls (emotion) and new shadow roots, which don't show up as DOM
+  mutations, so dark mode updates in a microtask, before the browser renders the new rules.
+- Converted CSS of Okta's CDN stylesheets is cached in `chrome.storage.local`, keyed by their
+  content-hashed URLs, so on later loads they're dark before they've even downloaded. The cache is
+  dropped whenever `src/theme/` changes (a hash set in `vite.config.ts`) and isn't kept in dev.
 
 ### Adding a page
 
