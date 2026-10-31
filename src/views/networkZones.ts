@@ -85,6 +85,7 @@ export const networkZonesProvider: ViewProvider = {
       title: 'View Zone',
       anchor,
       scope,
+      actions: scope.querySelector('.zone-actions'),
       load: async () => networkZoneView(item),
     }));
   },

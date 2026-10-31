@@ -116,11 +116,21 @@ const isReachable = (el: Element) => {
   return menu !== null && isVisible(menu.closest('.dropdown') ?? menu);
 };
 
-/** Does Okta already offer an Edit control in this part of the page? */
-export const hasEditControl = (scope: Element) =>
-  [...scope.querySelectorAll(CONTROL)].some(
+/**
+ * The Edit control Okta offers in this part of the page, if any. Prefers a
+ * visible one, then one labelled "Edit" (menus also hold e.g. "Activate" items
+ * with `data-se="edit-rule-activate"`).
+ */
+export function findEditControl(scope: Element): Element | undefined {
+  const edits = [...scope.querySelectorAll(CONTROL)].filter(
     (el) => !isOwn(el) && isReachable(el) && looksLikeEdit(el),
   );
+  return (
+    edits.find(isVisible) ??
+    edits.find((el) => /^edit\b/i.test(normalize(el.textContent))) ??
+    edits[0]
+  );
+}
 
 const EYE_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
   <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
@@ -163,11 +173,75 @@ export function createViewButton(
   return button;
 }
 
-/** Put the button right after the anchor text – but never inside a link or button. */
-export function insertAfterAnchor(anchor: Element, button: HTMLElement) {
-  const interactive = anchor.closest('a, button, [role="button"]');
-  if (interactive) interactive.after(button);
-  else anchor.append(button);
+/** A "View" item for the "Actions" menu that `editItem` (Okta's Edit item) belongs to. */
+export function createViewMenuItem(
+  key: string,
+  label: string,
+  onClick: () => void,
+  editItem: Element,
+): HTMLElement {
+  // Okta's own classes give the item the menu's look; drop the ones that hide or identify it.
+  const item = editItem.cloneNode(false) as HTMLElement;
+  item.classList.remove('option-hidden');
+  item.removeAttribute('data-se');
+  item.setAttribute(OWN_ATTR, 'view-button');
+  item.dataset.oktamaxKey = key;
+  item.title = `${label} (read-only)`;
+
+  const link = (editItem.querySelector('a')?.cloneNode(false) as HTMLElement) ?? item;
+  link.removeAttribute('data-se');
+  link.innerHTML = '<p class="option-title">View (Okta Max)</p>';
+  // Okta leaves room on the left for item icons; put ours there if the menu has icons.
+  if (editItem.querySelector('.icon')) {
+    link.style.position = 'relative';
+    link.insertAdjacentHTML(
+      'afterbegin',
+      `<span style="position: absolute; left: 12px; color: #1662dd; line-height: 0">${EYE_ICON}</span>`,
+    );
+  }
+  if (link !== item) item.append(link);
+
+  item.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    // Okta closes its menus on outside clicks.
+    document.body.click();
+    onClick();
+  });
+  return item;
+}
+
+/**
+ * Put the view control where Okta puts its Edit control: next to `edit` when
+ * the page shows one (as an item of the same menu if it's in an "Actions"
+ * menu), else in the object's `actions` area (next to a disabled "Actions"
+ * menu if it has one), else right after the anchor text.
+ */
+export function placeViewControl(
+  target: { key: string; title: string; anchor: Element; actions?: Element | null },
+  edit: Element | undefined,
+  onClick: () => void,
+) {
+  const menuItem = edit?.closest(MENU) && edit.closest('li');
+  if (menuItem) {
+    menuItem.after(createViewMenuItem(target.key, target.title, onClick, menuItem));
+    return;
+  }
+
+  const button = createViewButton(target.key, target.title, onClick);
+  // Next to Okta's Edit control or (disabled) "Actions" menu, floated the same way.
+  const neighbour = edit ?? target.actions?.querySelector(':scope > .dropdown');
+  if (neighbour) {
+    button.style.float = getComputedStyle(neighbour).float;
+    neighbour.after(button);
+  } else if (target.actions) {
+    target.actions.append(button);
+  } else {
+    // Never inside a link or button.
+    const interactive = target.anchor.closest('a, button, [role="button"]');
+    if (interactive) interactive.after(button);
+    else target.anchor.append(button);
+  }
 }
 
 /** Add a "MAX" label next to the Okta logo in the sidenav, so it's clear the extension is active. */

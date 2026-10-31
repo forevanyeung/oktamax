@@ -13,7 +13,7 @@ const USERNAME_FORMATS: Record<string, string> = {
 
 const PUSH_STATUS = { PUSH: 'Create and update', DONT_PUSH: 'Create only' };
 
-/** "Application username format" + "Update application username on", shared by SAML and Sign On. */
+/** "Application username format" + "Update application username on", used by the SAML view. */
 export function usernameFields(app: App, formatLabel = 'Application username format'): Field[] {
   const template = app.credentials?.userNameTemplate;
   const builtIn = template?.template && template.type !== 'CUSTOM' ? template.template : undefined;
@@ -26,15 +26,3 @@ export function usernameFields(app: App, formatLabel = 'Application username for
     select('Update application username on', template?.pushStatus ?? 'PUSH', PUSH_STATUS),
   ].filter((f): f is Field => Boolean(f));
 }
-
-export const SIGN_ON_MODES: Record<string, string> = {
-  SAML_2_0: 'SAML 2.0',
-  SAML_1_1: 'SAML 1.1',
-  OPENID_CONNECT: 'OpenID Connect',
-  WS_FEDERATION: 'WS-Federation',
-  BROWSER_PLUGIN: 'Secure Web Authentication',
-  AUTO_LOGIN: 'Secure Web Authentication',
-  BASIC_AUTH: 'Basic Authentication',
-  BOOKMARK: 'Bookmark',
-  SECURE_PASSWORD_STORE: 'Secure Password Store',
-};

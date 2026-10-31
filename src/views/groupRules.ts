@@ -42,6 +42,7 @@ export const groupRulesProvider: ViewProvider = {
       title: 'View Rule',
       anchor,
       scope,
+      actions: scope.querySelector('.status-col-perf'),
       load: () => groupRuleView(item),
     }));
   },

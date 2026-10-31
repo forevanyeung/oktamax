@@ -6,13 +6,7 @@
  * an Edit control, and add/remove our view buttons accordingly.
  */
 import type { ViewProvider, ViewTarget } from '../views/types';
-import {
-  createViewButton,
-  ensureMaxBadge,
-  hasEditControl,
-  insertAfterAnchor,
-  OWN_ATTR,
-} from './dom';
+import { ensureMaxBadge, findEditControl, OWN_ATTR, placeViewControl } from './dom';
 
 interface ScannerOptions {
   providers: ViewProvider[];
@@ -44,22 +38,22 @@ export function startScanner({ providers, openView, alwaysShow }: ScannerOptions
       for (const target of found) {
         targets.set(target.key, target);
         const existing = document.querySelector(`[data-oktamax-key="${CSS.escape(target.key)}"]`);
-        const show = alwaysShow() || !hasEditControl(target.scope);
+        const edit = findEditControl(target.scope);
+        const show = alwaysShow() || !edit;
         if (show) seen.add(target.key);
 
         if (show && !existing) {
-          const button = createViewButton(target.key, target.title, () => {
+          placeViewControl(target, edit, () => {
             const latest = targets.get(target.key);
             if (latest) openView(latest);
           });
-          insertAfterAnchor(target.anchor, button);
         }
       }
     }
 
-    // Remove buttons whose target disappeared or now has a real Edit button.
-    for (const button of document.querySelectorAll<HTMLElement>('[data-oktamax-key]')) {
-      if (!seen.has(button.dataset.oktamaxKey ?? '')) button.remove();
+    // Remove view controls whose target disappeared or now has a real Edit button.
+    for (const control of document.querySelectorAll<HTMLElement>('[data-oktamax-key]')) {
+      if (!seen.has(control.dataset.oktamaxKey ?? '')) control.remove();
     }
   }
 

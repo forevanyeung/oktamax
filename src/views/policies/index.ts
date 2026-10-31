@@ -1,13 +1,12 @@
-import { findItems, findSections, headingTexts } from '../../content/dom';
+import { findItems, headingTexts } from '../../content/dom';
 import type { FormView } from '../../form/schema';
 import { get, getAll } from '../../okta/api';
 import type { Policy, PolicyRule, PolicyType } from '../../okta/types';
 import { objectSections } from '../generic';
-import type { ViewProvider, ViewTarget } from '../types';
+import type { ViewProvider } from '../types';
 import { accessPolicyRuleView } from './accessPolicyRule';
 import { globalSessionRuleView } from './globalSessionRule';
 import { passwordRuleView } from './passwordRule';
-import { policySettingsView } from './policySettings';
 
 /** Admin console pages that show policies of a given type. */
 const POLICY_PAGES: Array<{ path: RegExp; type: PolicyType }> = [
@@ -57,24 +56,14 @@ export const policiesProvider: ViewProvider = {
     const rules = await get<PolicyRule[]>(`/api/v1/policies/${policy.id}/rules?limit=200`);
     const ruleView = RULE_VIEWS[policy.type] ?? genericRuleView;
 
-    const policyTargets: ViewTarget[] = findSections([policy.name]).map(({ anchor, scope }) => ({
-      key: `policy:${policy.id}`,
-      title: 'View Policy',
+    // The policy itself (name, description, groups, password settings) is shown on the page.
+    return findItems(rules, (r) => r.name).map(({ item, anchor, scope }) => ({
+      key: `policy-rule:${item.id}`,
+      title: 'View Rule',
       anchor,
       scope,
-      load: () => policySettingsView(policy),
+      actions: scope.querySelector('[data-type="control-buttons"], .card--header-action'),
+      load: () => ruleView(item),
     }));
-
-    const ruleTargets: ViewTarget[] = findItems(rules, (r) => r.name).map(
-      ({ item, anchor, scope }) => ({
-        key: `policy-rule:${item.id}`,
-        title: 'View Rule',
-        anchor,
-        scope,
-        load: () => ruleView(item),
-      }),
-    );
-
-    return [...policyTargets, ...ruleTargets];
   },
 };

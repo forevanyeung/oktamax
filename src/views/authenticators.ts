@@ -54,6 +54,7 @@ export const authenticatorsProvider: ViewProvider = {
         title: `View ${item.name}`,
         anchor,
         scope,
+        actions: scope.querySelector('.authenticator-actions'),
         load: () => authenticatorView(item),
       }),
     );
