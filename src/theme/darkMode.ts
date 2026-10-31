@@ -23,6 +23,10 @@ const ROLES: Record<string, Role> = {
   'border-right-color': 'border',
   'border-bottom-color': 'border',
   'border-left-color': 'border',
+  'border-inline-start-color': 'border',
+  'border-inline-end-color': 'border',
+  'border-block-start-color': 'border',
+  'border-block-end-color': 'border',
   'outline-color': 'border',
   'column-rule-color': 'border',
   'box-shadow': 'shadow',
@@ -249,8 +253,11 @@ interface ThemedRoot {
   root: Document | ShadowRoot;
   /** Our dark copy of each of the root's sheets, by owner element or adopted sheet. */
   mirrors: Map<object, { sheet: CSSStyleSheet; css: string }>;
+  /** The root's <link>/<style> elements; re-queried after its children change. */
+  owners?: StyleOwner[];
   attributesCss: string;
   attributesDirty: boolean;
+  onLoad: () => void;
 }
 
 const ATTRIBUTES = {};
@@ -284,9 +291,14 @@ export function startDarkMode(): DarkMode {
       ours.push(mirror.sheet);
     };
 
-    for (const owner of root.querySelectorAll<StyleOwner>('link[rel~="stylesheet" i], style')) {
-      if (!owner.hasAttribute(OWN_ATTR)) add(owner, ownerCss(owner, schedule));
-    }
+    themed.owners ??= [
+      ...root.querySelectorAll<StyleOwner>('link[rel~="stylesheet" i], style'),
+    ].filter((owner) => !owner.hasAttribute(OWN_ATTR));
+    for (const owner of themed.owners)
+      add(
+        owner,
+        ownerCss(owner, () => schedule()),
+      );
     const pageAdopted = root.adoptedStyleSheets.filter((s) => !ownSheets.has(s));
     const early = pageAdopted.filter(isEarlyDark);
     for (const sheet of pageAdopted) if (!early.includes(sheet)) add(sheet, convertSheet(sheet));
@@ -306,21 +318,30 @@ export function startDarkMode(): DarkMode {
     }
   };
 
+  const themedRoot = (node: Node) => roots.get(node.getRootNode() as Document | ShadowRoot);
+
   const observer = new MutationObserver((records) => {
     for (const record of records) {
-      for (const node of record.addedNodes) if (node instanceof Element) addShadowRoots(node);
-      if (record.type !== 'characterData') {
-        const root = record.target.getRootNode();
-        const themed = roots.get(root as Document | ShadowRoot);
-        if (themed) themed.attributesDirty = true;
+      const themed = themedRoot(record.target);
+      if (record.type === 'childList') {
+        for (const node of record.addedNodes) if (node instanceof Element) addShadowRoots(node);
+        if (themed) themed.owners = undefined;
       }
+      if (themed && record.type !== 'characterData') themed.attributesDirty = true;
+      if (themed) schedule(themed);
     }
-    schedule();
   });
 
   const addRoot = (root: Document | ShadowRoot) => {
     if (roots.has(root)) return;
-    const themed = { root, mirrors: new Map(), attributesCss: '', attributesDirty: true };
+    const themed: ThemedRoot = {
+      root,
+      mirrors: new Map(),
+      attributesCss: '',
+      attributesDirty: true,
+      // Stylesheets finishing their download don't mutate the DOM.
+      onLoad: () => schedule(themed),
+    };
     roots.set(root, themed);
     observer.observe(root, {
       childList: true,
@@ -328,8 +349,7 @@ export function startDarkMode(): DarkMode {
       characterData: true,
       attributeFilter: ['style', 'fill', 'stroke'],
     });
-    // Stylesheets finishing their download don't mutate the DOM.
-    root.addEventListener('load', schedule, true);
+    root.addEventListener('load', themed.onLoad, true);
     update(themed);
     if (root instanceof ShadowRoot) addShadowRoots(root);
   };
@@ -346,33 +366,34 @@ export function startDarkMode(): DarkMode {
   }
 
   // Updates run as a microtask: after the page's script has added its rules or
-  // elements, but before the browser renders them.
+  // elements, but before the browser renders them. Only roots that changed are
+  // updated; the Okta shell alone has several, and emotion inserts rules often.
+  const dirty = new Set<ThemedRoot>();
   const flush = () => {
-    for (const [root, themed] of roots) {
+    for (const themed of dirty) {
+      const { root } = themed;
       if (root instanceof ShadowRoot && !root.host.isConnected) roots.delete(root);
-      else update(themed);
+      else if (roots.has(root)) update(themed);
     }
+    dirty.clear();
   };
-  let queued = false;
-  function schedule() {
-    if (queued) return;
-    queued = true;
-    queueMicrotask(() => {
-      queued = false;
-      flush();
-    });
+  function schedule(themed?: ThemedRoot) {
+    if (!dirty.size) queueMicrotask(flush);
+    for (const t of themed ? [themed] : roots.values()) dirty.add(t);
   }
 
   const onStyles = (event: Event) => {
     const target = event.composedPath()[0];
+    if (!(target instanceof Node)) return schedule();
+    // A shadow host: its root attached a shadow root or adopted sheets.
     if (target instanceof Element && target.shadowRoot && !target.hasAttribute(OWN_ATTR)) {
       addRoot(target.shadowRoot);
+      schedule(roots.get(target.shadowRoot));
     }
-    if (target instanceof Node) {
-      const root = target.getRootNode();
-      if (root instanceof ShadowRoot && !root.host.hasAttribute(OWN_ATTR)) addRoot(root);
-    }
-    schedule();
+    const root = target.getRootNode();
+    if (root instanceof ShadowRoot && !root.host.hasAttribute(OWN_ATTR)) addRoot(root);
+    const themed = themedRoot(target);
+    if (themed) schedule(themed);
   };
   document.addEventListener(EVENT, onStyles, true);
 
@@ -380,6 +401,7 @@ export function startDarkMode(): DarkMode {
   addShadowRoots(document.documentElement);
   // Once the CSS converted on earlier page loads is back, the page is dark: show it.
   void restored.finally(() => {
+    schedule();
     flush();
     removeEarlyDark();
   });
@@ -394,11 +416,12 @@ export function startDarkMode(): DarkMode {
       clearInterval(timer);
       observer.disconnect();
       document.removeEventListener(EVENT, onStyles, true);
-      for (const { root } of roots.values()) {
-        root.removeEventListener('load', schedule, true);
+      for (const { root, onLoad } of roots.values()) {
+        root.removeEventListener('load', onLoad, true);
         root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => !ownSheets.has(s));
       }
       roots.clear();
+      dirty.clear();
       removeEarlyDark();
     },
   };
