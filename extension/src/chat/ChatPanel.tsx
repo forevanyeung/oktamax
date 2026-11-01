@@ -172,7 +172,7 @@ const Notice = ({
       </p>
       <p>
         Open <code>chrome://extensions</code>, check Okta Max for errors, and reload it. With a dev
-        build, the dev server (<code>npm run dev:extension</code>) has to be running.
+        build, the dev server (<code>npm run dev</code>) has to be running.
       </p>
       <p className="chat-note">{status.error}</p>
       <button type="button" className="chat-button" onClick={onRetry}>

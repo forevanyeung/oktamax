@@ -154,9 +154,12 @@ export class OktaMcpProcessPool {
         OKTAMAX_TOKEN_FILE: tokenFile,
       },
     });
-    transport.stderr?.on('data', (chunk: Buffer) =>
-      console.error(`[okta-mcp ${userId}] ${chunk.toString().trimEnd()}`),
-    );
+    // Kept to explain a process that exits before it answers.
+    let stderr = '';
+    transport.stderr?.on('data', (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-2000);
+      console.error(`[okta-mcp ${userId}] ${chunk.toString().trimEnd()}`);
+    });
 
     const client = new Client({ name: 'oktamax-gateway', version: '0.1.0' });
     transport.onclose = () => {
@@ -166,7 +169,20 @@ export class OktaMcpProcessPool {
     const session: Session = {
       transport,
       // The token must be in place before the server starts: it checks it at startup.
-      client: writeToken(tokenFile, token).then(() => client.connect(transport).then(() => client)),
+      client: writeToken(tokenFile, token)
+        .then(() => client.connect(transport))
+        .then(
+          () => client,
+          (error: NodeJS.ErrnoException) => {
+            if (error.code === 'ENOENT') {
+              throw new Error(
+                `${this.options.command} not found: install uv, or set OKTA_MCP_COMMAND`,
+              );
+            }
+            const output = stderr.trim();
+            throw new Error(`${error.message}${output ? `. Its output:\n${output}` : ''}`);
+          },
+        ),
       home,
       tokenFile,
       scopes,

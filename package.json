@@ -13,7 +13,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
     "test:e2e": "npm run test:e2e -w @oktamax/extension",
-    "dev": "npm run dev -w @oktamax/server",
+    "dev": "vp run -r --parallel dev",
+    "dev:server": "npm run dev -w @oktamax/server",
     "dev:extension": "npm run dev -w @oktamax/extension"
   },
   "devDependencies": {

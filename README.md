@@ -37,8 +37,10 @@ Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, 
 `extension/dist/`.
 
 `npm run dev:extension` (`vp dev`) builds with hot reload. Load `extension/dist/` once in the same
-way. A dev build is only a thin loader for the dev server's code, so keep the dev server running
-while you use it; without it Chrome reports that the service worker can't be registered.
+way. `npm run dev` runs it together with the chat server (`npm run dev:server`). A dev build is
+only a thin loader for the dev server's code, so keep the dev server running while you use it;
+without it Chrome reports that the service worker can't be registered. The build also points at
+the dev server's port: if port 5173 was taken and it picked another, reload the extension once.
 
 In a dev build, the assistant works without any setup: when no chat server is reachable, the
 service worker answers from a mock (`extension/src/background/mockChat.ts`) and the panel is tagged
@@ -262,7 +264,7 @@ It needs `OKTA_ORG_URL` (from `server/.env`) and an API token from a super admin
 ```sh
 cp server/.env.example server/.env   # OKTA_ORG_URL, OKTA_CLIENT_ID, and a model (below)
 npm install
-npm run dev                          # the server: http://localhost:8787 (needs `uv` on PATH for okta-mcp-server)
+npm run dev:server                   # the server: http://localhost:8787 (needs `uv` on PATH for okta-mcp-server)
 ```
 
 Or with Docker. The image preinstalls Python 3.13 and `okta-mcp-server`, and runs as a non-root
