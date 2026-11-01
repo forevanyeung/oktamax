@@ -253,12 +253,13 @@ docker build -f server/Dockerfile -t oktamax-server .
 docker run -p 8787:8787 --env-file server/.env oktamax-server
 ```
 
-- **Model.** Set `ANTHROPIC_API_KEY` to use Anthropic's API directly (`ANTHROPIC_MODEL_ID`
-  defaults to `claude-opus-5-5`). Without it, the server uses Bedrock:
+- **Model.** Set `ANTHROPIC_API_KEY` to use Anthropic's API directly; without it, the server uses
+  Bedrock. `MODEL_ID` picks the model for either one and defaults to Claude Opus 5.5
+  (`claude-opus-5-5` on the API).
+  - On Bedrock, `MODEL_ID` defaults to `us.anthropic.claude-opus-5-5`, a US cross-region inference
+    profile. Use the ID your account has access to.
   - AWS credentials come from the standard chain (env vars, SSO profile, or an instance/task
     role). They need `bedrock:InvokeModelWithResponseStream` on the model.
-  - `BEDROCK_MODEL_ID` defaults to Claude Opus 5.5 (`us.anthropic.claude-opus-5-5`, a US
-    cross-region inference profile). Use the ID your account has access to.
 - **Chat history and in-flight streams are kept in memory.** That suits a single instance. To run
   more than one, implement `ChatStore` on a database and swap `StreamBuffer` for
   `resumable-stream` on Redis; the routes stay the same.
