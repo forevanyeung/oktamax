@@ -37,6 +37,11 @@ const server = serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
     config.model.provider === 'anthropic' ? 'Anthropic API' : `Bedrock, ${config.model.region}`;
   console.log(`  Model:     ${config.model.modelId} (${where})`);
   console.log(`  Okta MCP:  ${config.oktaMcp.command} ${config.oktaMcp.args.join(' ')}`);
+  // Have okta-mcp-server (with uvx, its download) ready before the first question.
+  oktaMcp.warmUp().then(
+    (ms) => console.log(`  Okta MCP:  ready (${(ms / 1000).toFixed(1)}s)`),
+    (error) => console.error(`  Okta MCP:  failed to start: ${error}`),
+  );
 });
 
 // Don't leave per-admin Okta MCP processes behind.

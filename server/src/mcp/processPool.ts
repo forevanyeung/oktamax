@@ -14,6 +14,9 @@
  *   - only the environment it needs (no AWS credentials or other server secrets).
  *
  * Processes are reused across requests and closed after `idleMs` without use.
+ * To answer the first question quickly, `warmUp` runs Okta's server once at
+ * startup (so `uvx` has downloaded it), and `prepare` starts an admin's process
+ * when they open the chat, before they ask anything.
  */
 import { chmod, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -98,6 +101,32 @@ export class OktaMcpProcessPool {
       await this.close(principal.userId);
       throw error;
     }
+  }
+
+  /** Starts the admin's process ahead of their first question, if it isn't running. */
+  async prepare(principal: Principal): Promise<void> {
+    const { release } = await this.acquire(principal);
+    release();
+  }
+
+  /**
+   * Starts Okta's server once, lists its tools and stops it, so whatever `uvx` downloads
+   * (the package, Python) is in place before the first admin needs it. Resolves with the
+   * time it took.
+   */
+  async warmUp(): Promise<number> {
+    const started = Date.now();
+    // okta-mcp-server only reads `exp` from the token at startup, and calls no Okta API here.
+    const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const token = `${b64({ alg: 'none' })}.${b64({ exp: Math.floor(started / 1000) + 3600 })}.warm-up`;
+    const id = '#warm-up'; // can't collide with an Okta user ID
+    const session = await this.start(id, this.options.allowedScopes.join(' '), token);
+    try {
+      await (await session.client).listTools();
+    } finally {
+      await this.close(id);
+    }
+    return Date.now() - started;
   }
 
   private async start(userId: string, scopes: string, token: string): Promise<Session> {

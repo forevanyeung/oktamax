@@ -95,6 +95,20 @@ describe('Okta MCP gateway', () => {
     expect(after.pid).toBe(before.pid);
     expect(after.token).toBe('token-ada-renewed');
   });
+
+  it("starts Okta's server once at startup, without leaving a process behind", async () => {
+    const running = oktaMcp.size;
+    await oktaMcp.warmUp();
+    expect(oktaMcp.size).toBe(running);
+  });
+
+  it("starts an admin's process when they open the chat, before they ask anything", async () => {
+    await oktaMcp.close('00ubob');
+    const running = oktaMcp.size;
+    const res = await fetch(`${base}/api/chats/not-asked-yet`, { headers: auth('token-bob') });
+    expect(res.status).toBe(404);
+    await vi.waitFor(() => expect(oktaMcp.size).toBe(running + 1));
+  });
 });
 
 describe('chat', () => {

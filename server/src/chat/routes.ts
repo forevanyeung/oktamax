@@ -26,6 +26,7 @@ import * as z from 'zod';
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
 import { requireAuth } from '../auth';
+import type { OktaMcpProcessPool } from '../mcp/processPool';
 import { pageTools } from './pageTools';
 import { instructions, withPageContext } from './prompt';
 import type { Chat, ChatMessage, ChatStore } from './store';
@@ -35,6 +36,8 @@ export interface ChatDeps {
   store: ChatStore;
   /** URL of the Okta MCP server the model's tools come from. */
   mcpUrl: string;
+  /** The admins' Okta MCP processes behind `mcpUrl`, started early when a chat opens. */
+  oktaMcp: Pick<OktaMcpProcessPool, 'prepare'>;
 }
 
 const pageContextSchema = z.object({
@@ -47,7 +50,7 @@ const pageContextSchema = z.object({
 });
 const metadataSchema = z.object({ page: pageContextSchema.optional() }).optional();
 
-export function createChatRoutes({ model, store, mcpUrl }: ChatDeps) {
+export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
   const chatRoutes = new Hono().use(requireAuth);
 
   /** The admin's own chat, or a 404/403 response. New IDs create an empty chat when `create`. */
@@ -62,6 +65,11 @@ export function createChatRoutes({ model, store, mcpUrl }: ChatDeps) {
   }
 
   chatRoutes.get('/:id', (c) => {
+    // The extension loads the history when the chat opens: start the admin's Okta MCP
+    // process now, so it's running by the time they ask something.
+    oktaMcp
+      .prepare(c.var.principal)
+      .catch((error) => console.error(`Okta MCP for ${c.var.principal.userId}: ${error}`));
     const chat = loadChat(c.req.param('id'), c.var.principal.userId);
     if (chat instanceof Response) return chat;
     return c.json({ messages: chat.messages, running: Boolean(chat.active) });

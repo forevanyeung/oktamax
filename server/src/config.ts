@@ -1,4 +1,6 @@
 /** Server configuration, read once from the environment (and `.env` if present). */
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { OKTA_SCOPES } from '@oktamax/shared';
@@ -46,8 +48,17 @@ export const config = {
     allowedScopes: OKTA_SCOPES.filter((s) => s !== 'openid'),
     idleMs: Number(process.env.OKTA_MCP_IDLE_MINUTES ?? 10) * 60_000,
     maxProcesses: Number(process.env.OKTA_MCP_MAX_PROCESSES ?? 50),
-    // One shared package cache, rather than one per admin HOME.
-    env: process.env.UV_CACHE_DIR ? { UV_CACHE_DIR: process.env.UV_CACHE_DIR } : undefined,
+    // uv keeps its cache and Pythons under HOME, which each admin's process gets fresh. Use
+    // the server user's instead, so `uvx` downloads okta-mcp-server and Python once, not per
+    // process. They hold only packages; every process runs as this same OS user anyway.
+    env: {
+      UV_CACHE_DIR:
+        process.env.UV_CACHE_DIR ??
+        join(process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'), 'uv'),
+      UV_PYTHON_INSTALL_DIR:
+        process.env.UV_PYTHON_INSTALL_DIR ??
+        join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'uv', 'python'),
+    },
   },
   /** Where the chat route reaches the MCP gateway. Defaults to this process. */
   mcpUrl: process.env.MCP_URL ?? `http://localhost:${process.env.PORT ?? 8787}/mcp`,
