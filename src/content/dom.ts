@@ -158,8 +158,10 @@ export function createViewButton(
     flexShrink: '0',
     alignItems: 'center',
     verticalAlign: 'middle',
-    margin: '0 0 0 8px',
-    padding: '3px',
+    // A hit box about the size of Okta's 40x38 edit link, with negative margins so it takes no
+    // more room than the icon with 3px around it.
+    margin: '-8px -9px -8px -1px',
+    padding: '11px 12px',
     border: '0',
     borderRadius: '4px',
     background: 'transparent',
@@ -320,6 +322,9 @@ export function placeViewControl(
   const neighbour = edit ?? actions?.querySelector(':scope > .dropdown');
   if (neighbour) {
     button.style.float = getComputedStyle(neighbour).float;
+    // Floated right, the neighbour sits to the right; don't reach over it.
+    if (button.style.float === 'right')
+      Object.assign(button.style, { paddingRight: '3px', marginRight: '0' });
     neighbour.after(button);
   } else if (actions) {
     // Alone in the actions area: right-aligned, without leaving room for the Delete icon
@@ -329,7 +334,7 @@ export function placeViewControl(
     Object.assign(button.style, {
       display: 'flex',
       width: 'fit-content',
-      margin: '7px 9px 0 auto',
+      margin: '-1px 0 -8px auto',
     });
     actions.append(button);
   } else {
