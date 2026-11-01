@@ -25,7 +25,9 @@ const pages: Record<string, string> = {
       <tr><td><a href="#">Office</a></td><td>IP</td><td><button>Edit</button></td></tr>
       <tr><td><a href="#">Blocked countries</a></td><td>Dynamic</td><td><div class="zone-actions"></div></td></tr>
     </table>
-    <table>
+    <!-- Like the console: full-width tables and a reset that lets SVGs shrink. -->
+    <style>svg { max-width: 100% }</style>
+    <table style="width: 100%">
       <thead><tr><th>Name</th><th>Zone type</th></tr></thead>
       <tbody><tr><td><a href="#">Guest Wi-Fi</a></td><td>IP</td></tr></tbody>
     </table>`,
@@ -137,6 +139,14 @@ async function main() {
     }),
     ['TD', true, 3],
     'rows without an actions cell get one, with a matching header cell',
+  );
+  // The added cell is as narrow as possible; the eye must not be squeezed away.
+  assert.equal(
+    await viewButton(page, 'zone:nzo3').evaluate(
+      (el) => el.querySelector('svg')!.getBoundingClientRect().width,
+    ),
+    15,
+    'the view icon keeps its size in a narrow actions cell',
   );
 
   await viewButton(page, 'zone:nzo2').click();

@@ -135,7 +135,7 @@ export function findEditControl(scope: Element): Element | undefined {
 // 16px for menu items (Okta's icon-16 slot); 15px for buttons, near Okta's 14px edit-16 pencil.
 const eyeIcon = (
   size: number,
-) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="flex-shrink: 0">
   <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
   <circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2"/>
 </svg>`;
