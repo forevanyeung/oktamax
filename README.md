@@ -46,7 +46,8 @@ The toolbar popup has two settings:
   dialogs with the real edit dialogs side by side.
 
 Where Edit is an item of an **Actions** menu, a **View** item is added to the same menu (its tooltip
-says it comes from Okta Max).
+says it comes from Okta Max). Where Okta leaves that menu out for read-only admins (Authenticators,
+authentication policy rules), an **Actions** menu with just the **View** item takes its place.
 
 ## What's covered
 

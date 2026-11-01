@@ -299,6 +299,7 @@ export const authenticatorsProvider: ViewProvider = {
         anchor,
         scope,
         actions: scope.querySelector('.authenticator-actions'),
+        menu: { icons: true },
         load: () => authenticatorView(item),
       }),
     );

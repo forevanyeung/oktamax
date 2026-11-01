@@ -240,11 +240,46 @@ export function addActionsCell(row: Element): HTMLElement {
 }
 
 /**
+ * An "Actions" menu like Okta's, holding just `item`. Okta's menus are driven
+ * by its own scripts, so this one opens and closes itself the same way: the
+ * toggle shows the options, any click elsewhere hides them.
+ */
+export function createActionsMenu(item: HTMLElement): HTMLElement {
+  const menu = createActions('div', 'dropdown more-actions float-l');
+  menu.innerHTML = `<a href="#" class="link-button link-button-icon option-selected center"><span class="option-selected-text">Actions</span><span class="icon-dm"></span></a><div class="options clearfix"><ul class="okta-dropdown-list options-wrap clearfix"></ul></div>`;
+  menu.querySelector('ul')!.append(item);
+  const options = menu.querySelector<HTMLElement>('.options')!;
+  const toggle = menu.querySelector('a')!;
+
+  toggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    options.style.display = options.style.display === 'block' ? '' : 'block';
+  });
+  const close = (event: Event) => {
+    if (!menu.isConnected) document.removeEventListener('click', close);
+    else if (!toggle.contains(event.target as Node)) options.style.display = '';
+  };
+  document.addEventListener('click', close);
+  return menu;
+}
+
+/** A stand-in for Okta's menu items, to build a View item from. */
+function menuItemTemplate(icons: boolean): HTMLElement {
+  const item = document.createElement('li');
+  item.className = 'okta-dropdown-option option';
+  item.tabIndex = 0;
+  item.innerHTML = icons
+    ? '<a class="icon-16"><span class="icon"></span></a>'
+    : '<a class="icon-16 no-icon"></a>';
+  return item;
+}
+
+/**
  * Put the view control where Okta puts its Edit control: next to `edit` when
  * the page shows one (as an item of the same menu if it's in an "Actions"
- * menu), else in the object's `actions` area (next to a disabled "Actions"
- * menu if it has one, recreating the area if Okta left it out), else right
- * after the anchor text.
+ * menu), else in the object's `actions` area (in an "Actions" menu of its own
+ * where Okta would show one, next to a disabled "Actions" menu if it has one,
+ * recreating the area if Okta left it out), else right after the anchor text.
  */
 export function placeViewControl(
   target: {
@@ -253,6 +288,7 @@ export function placeViewControl(
     anchor: Element;
     actions?: Element | null;
     addActions?: () => Element;
+    menu?: { icons: boolean };
   },
   edit: Element | undefined,
   onClick: () => void,
@@ -263,8 +299,19 @@ export function placeViewControl(
     return;
   }
 
-  const button = createViewButton(target.key, target.title, onClick);
   const actions = target.actions ?? (edit ? undefined : target.addActions?.());
+  if (!edit && actions && target.menu) {
+    const item = createViewMenuItem(
+      target.key,
+      target.title,
+      onClick,
+      menuItemTemplate(target.menu.icons),
+    );
+    actions.append(createActionsMenu(item));
+    return;
+  }
+
+  const button = createViewButton(target.key, target.title, onClick);
   // Next to Okta's Edit control or (disabled) "Actions" menu, floated the same way.
   const neighbour = edit ?? actions?.querySelector(':scope > .dropdown');
   if (neighbour) {
@@ -272,12 +319,13 @@ export function placeViewControl(
     neighbour.after(button);
   } else if (actions) {
     // Alone in the actions area: right-aligned, without leaving room for the Delete icon
-    // read-only admins don't get, where a lone pencil would be (Okta's has 6px 12px of padding).
-    // Works in block, table-cell and flex containers alike.
+    // read-only admins don't get, where a lone pencil would be (Okta's link has 6px 12px of
+    // padding, and the pencil is drawn low in its icon). Works in block, table-cell and flex
+    // containers alike.
     Object.assign(button.style, {
       display: 'flex',
       width: 'fit-content',
-      margin: '4px 9px 0 auto',
+      margin: '7px 9px 0 auto',
     });
     actions.append(button);
   } else {

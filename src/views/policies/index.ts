@@ -69,6 +69,7 @@ export const policiesProvider: ViewProvider = {
         addActions: card
           ? () => card.appendChild(createActions('section', 'card--header-action'))
           : undefined,
+        menu: card ? { icons: false } : undefined,
         load: () => ruleView(item),
       };
     });

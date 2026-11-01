@@ -1,4 +1,4 @@
-import { addActionsCell, isVisible } from '../../content/dom';
+import { addActionsCell, createActions, isVisible } from '../../content/dom';
 import {
   checkbox,
   note,
@@ -151,13 +151,29 @@ function findRows(link: RegExp) {
   });
 }
 
+/**
+ * Read-only admins get no actions column; put the view icon right after the
+ * person's assignment type ("Group"), right-aligned with it.
+ */
+function afterType(row: Element): Element {
+  const cell = row.querySelector<HTMLElement>('.people-assignment-type');
+  if (!cell) return addActionsCell(row);
+  cell.style.textAlign = 'right';
+  const header = row.closest('table')?.querySelector<HTMLElement>('thead th:last-child');
+  if (header) header.style.textAlign = 'right';
+  const actions = createActions('span');
+  Object.assign(actions.style, { display: 'inline-flex', verticalAlign: 'top', marginLeft: '2px' });
+  cell.append(actions);
+  return actions;
+}
+
 export function assignmentTargets(appId: string): ViewTarget[] {
   const users = findRows(/^\/admin\/user\/profile\/view\/(\w+)$/).map(({ id, anchor, row }) => ({
     key: `app-user:${appId}:${id}`,
     title: 'View User Assignment',
     anchor,
     scope: row,
-    addActions: () => addActionsCell(row),
+    addActions: () => afterType(row),
     load: () => userAssignmentView(appId, id),
   }));
   const groups = findRows(/^\/admin\/group\/(\w+)$/).map(({ id, anchor, row }) => ({

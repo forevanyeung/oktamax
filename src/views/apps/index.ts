@@ -43,7 +43,7 @@ export const appsProvider: ViewProvider = {
         addActions: () => {
           const bar = createActions('div', 'link-bar hdr-layout clearfix');
           // Level with where the Edit link's text would be (it has 6px 12px of padding).
-          Object.assign(bar.style, { paddingTop: '3px', marginRight: '15px' });
+          Object.assign(bar.style, { marginRight: '15px' });
           anchor.after(bar);
           return bar;
         },
