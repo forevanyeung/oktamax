@@ -23,10 +23,11 @@ import {
 import { Hono } from 'hono';
 import * as z from 'zod';
 
+import { StreamBuffer } from '@oktamax/shared/streamBuffer';
+
 import { requireAuth } from '../auth';
 import { instructions, withPageContext } from './prompt';
 import type { Chat, ChatMessage, ChatStore } from './store';
-import { StreamBuffer } from './streamBuffer';
 
 export interface ChatDeps {
   model: LanguageModel;

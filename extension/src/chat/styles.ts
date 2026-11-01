@@ -55,9 +55,15 @@ export const CHAT_CSS = `
 
 .chat-banner { flex: none; margin: 12px 16px 0; padding: 8px 12px; border-radius: 6px; color: var(--muted); }
 .chat-banner.chat-failed { background: var(--error-bg); color: var(--error-text); }
-.chat-signin { padding: 24px 16px; }
-.chat-signin p { margin: 0 0 16px; }
-.chat-signin .chat-note { color: var(--muted); font-size: 12px; }
+.chat-tag {
+  margin-right: auto; padding: 0 8px; border: 1px solid var(--chip-border); border-radius: 10px;
+  background: var(--chip); color: var(--muted); font-size: 11px; font-weight: 600; line-height: 18px;
+}
+.chat-header h2:has(+ .chat-tag) { flex: none; }
+.chat-notice { padding: 24px 16px; overflow-y: auto; }
+.chat-notice p { margin: 0 0 12px; }
+.chat-notice code { padding: 1px 4px; border-radius: 4px; background: var(--chat-raised); font: 12px ${MONO_FONT}; overflow-wrap: anywhere; }
+.chat-notice .chat-note { margin-bottom: 16px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
 .chat-thread { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .chat-viewport {

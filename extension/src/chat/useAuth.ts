@@ -5,12 +5,17 @@ import type { AuthStatus, WorkerRequest } from '../background/messages';
 const ask = (request: WorkerRequest) =>
   chrome.runtime.sendMessage<WorkerRequest, AuthStatus>(request);
 
-/** Sign-in state, from the service worker. Signing in is silent when the Okta session is valid. */
-export function useAuth() {
+/**
+ * Sign-in state, from the service worker, checked again when the chat server URL
+ * changes. Signing in is silent when the Okta session is valid.
+ */
+export function useAuth(serverUrl: string | undefined) {
   const [status, setStatus] = useState<AuthStatus>();
 
   const refresh = useCallback(() => void ask({ type: 'oktamax:authStatus' }).then(setStatus), []);
-  useEffect(refresh, [refresh]);
+  useEffect(() => {
+    if (serverUrl !== undefined) refresh();
+  }, [refresh, serverUrl]);
 
   const signIn = async () => setStatus(await ask({ type: 'oktamax:signIn' }));
 

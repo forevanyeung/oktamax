@@ -5,6 +5,7 @@
  * - Relays the chat's HTTP requests to the chat server, adding the token and
  *   streaming the response back over a port. Only requests to the configured
  *   chat server get a token.
+ * - In dev builds, answers them from a mock when no chat server is reachable.
  */
 import type { ServerConfig } from '@oktamax/shared';
 
@@ -17,6 +18,7 @@ import {
   type BridgeResponse,
   type WorkerRequest,
 } from './messages';
+import { mockChat } from './mockChat';
 
 const configCache = new Map<string, Promise<ServerConfig>>();
 
@@ -39,23 +41,21 @@ async function serverConfig(): Promise<{ serverUrl: string; config: ServerConfig
 }
 
 async function authStatus(interactive: boolean): Promise<AuthStatus> {
+  let server: Awaited<ReturnType<typeof serverConfig>>;
   try {
-    const server = await serverConfig();
-    if (!server) return { configured: false, signedIn: false };
-    try {
-      await getAccessToken(server.config, interactive);
-      return { configured: true, signedIn: true, oktaOrgUrl: server.config.oktaOrgUrl };
-    } catch (error) {
-      return {
-        configured: true,
-        signedIn: false,
-        oktaOrgUrl: server.config.oktaOrgUrl,
-        error: String(error),
-      };
-    }
-  } catch {
-    // Chat server unreachable: hide the chat rather than offer a sign-in that can't work.
-    return { configured: false, signedIn: false };
+    server = await serverConfig();
+  } catch (error) {
+    if (import.meta.env.DEV) return { state: 'mock' };
+    const { chatServerUrl } = await loadSettings();
+    return { state: 'unreachable', serverUrl: chatServerUrl, error: String(error) };
+  }
+  if (!server) return { state: 'off' };
+  const { oktaOrgUrl } = server.config;
+  try {
+    await getAccessToken(server.config, interactive);
+    return { state: 'signedIn', oktaOrgUrl };
+  } catch (error) {
+    return { state: 'signedOut', oktaOrgUrl, error: String(error) };
   }
 }
 
@@ -66,32 +66,24 @@ chrome.runtime.onMessage.addListener((message: WorkerRequest, _sender, sendRespo
   return true; // respond asynchronously
 });
 
-const jsonHead = (status: number): BridgeResponse => ({
-  type: 'head',
-  status,
-  statusText: '',
-  headers: [['content-type', 'application/json']],
-});
-
-async function relay(
-  request: BridgeRequest,
-  post: (m: BridgeResponse) => void,
-  signal: AbortSignal,
-) {
-  const server = await serverConfig();
+/** The chat server's response to `request`, with the admin's token added. */
+async function forward(request: BridgeRequest, signal: AbortSignal): Promise<Response> {
+  let server: Awaited<ReturnType<typeof serverConfig>>;
+  try {
+    server = await serverConfig();
+  } catch (error) {
+    if (import.meta.env.DEV) return mockChat(request);
+    throw error;
+  }
   if (!server || new URL(request.url).origin !== new URL(server.serverUrl).origin) {
-    post({ type: 'error', message: 'Request is not for the configured chat server' });
-    return;
+    throw new Error('Request is not for the configured chat server');
   }
 
   let token: string;
   try {
     token = await getAccessToken(server.config, false);
   } catch {
-    post(jsonHead(401));
-    post({ type: 'chunk', text: JSON.stringify({ error: 'signin_required' }) });
-    post({ type: 'end' });
-    return;
+    return Response.json({ error: 'signin_required' }, { status: 401 });
   }
 
   const res = await fetch(request.url, {
@@ -101,7 +93,15 @@ async function relay(
     signal,
   });
   if (res.status === 401) await clearAccessToken();
+  return res;
+}
 
+async function relay(
+  request: BridgeRequest,
+  post: (m: BridgeResponse) => void,
+  signal: AbortSignal,
+) {
+  const res = await forward(request, signal);
   post({ type: 'head', status: res.status, statusText: res.statusText, headers: [...res.headers] });
   if (res.body) {
     const decoder = new TextDecoder();

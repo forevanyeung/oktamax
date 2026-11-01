@@ -1,7 +1,8 @@
 /**
  * Keeps a copy of an in-flight UI message stream (SSE text) so a client that
  * reloads – e.g. the admin navigated to another page – can replay it from the
- * start and then follow it live.
+ * start and then follow it live. Used by the server, and by the extension's
+ * mock chat server in dev builds.
  *
  * In-memory: fine for one server instance. With several instances, swap this for
  * the `resumable-stream` package (Redis) – the route code doesn't change.

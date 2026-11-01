@@ -2,7 +2,8 @@
  * End-to-end test of the on-page chat: the built extension in Chromium, the
  * real chat server (in-process) with a fake Okta and a scripted model.
  *
- * Checks that a question asked on one page keeps streaming across a full page
+ * Checks that the panel says the assistant isn't set up while there's no
+ * server, that a question asked on one page keeps streaming across a full page
  * navigation, that the page context reaches the server, and that history
  * survives reloads.
  *
@@ -41,7 +42,6 @@ async function main() {
     store,
     mcpUrl: `http://localhost:${PORT}/mcp`,
   });
-  const server = serve({ fetch: app.fetch, port: PORT });
 
   const context = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), 'oktamax-')), {
     channel: 'chromium',
@@ -71,6 +71,16 @@ async function main() {
 
   const page = await context.newPage();
   page.on('console', (m) => m.type() === 'error' && console.log('[page error]', m.text()));
+
+  // --- No chat server yet: the panel says it isn't set up ---------------------
+  await page.goto(`${ADMIN}/admin/users`);
+  await page.getByRole('button', { name: 'Open Okta assistant' }).click();
+  const notice = page.getByRole('dialog', { name: 'Okta assistant' });
+  await notice.getByText('The assistant isn’t set up yet.').waitFor();
+  await notice.getByText(`http://localhost:${PORT}`).waitFor();
+  await notice.getByRole('button', { name: 'Close' }).click();
+
+  const server = serve({ fetch: app.fetch, port: PORT });
 
   // --- Ask a question on the People page -------------------------------------
   await page.goto(`${ADMIN}/admin/users`);

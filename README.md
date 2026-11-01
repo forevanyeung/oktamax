@@ -37,7 +37,15 @@ Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, 
 `extension/dist/`.
 
 `npm run dev:extension` (`vp dev`) builds with hot reload. Load `extension/dist/` once in the same
-way.
+way. A dev build is only a thin loader for the dev server's code, so keep the dev server running
+while you use it; without it Chrome reports that the service worker can't be registered.
+
+In a dev build, the assistant works without any setup: when no chat server is reachable, the
+service worker answers from a mock (`extension/src/background/mockChat.ts`) and the panel is tagged
+**Mock**. Its canned replies know the page you're on, stream word by word, keep going across page
+loads, and cover the UI's cases: ask about _locked out_ users or apps without _MFA_ (lookups and a
+table), for a _long_ answer (markdown), or for an _error_. Production builds don't include the
+mock.
 
 ### Staying up to date on another machine
 
@@ -244,6 +252,8 @@ Build and load the extension as in [Install](#install), then:
 1. In the toolbar popup, set **Chat server URL**. It defaults to `http://localhost:8787`, and
    Chrome asks for permission to reach it.
 2. The **Ask** button appears only on the admin console of the org the server is configured for.
+   While the server can't be reached, it appears on every admin console, and the panel says the
+   assistant isn't set up yet.
 
 ## How it works
 

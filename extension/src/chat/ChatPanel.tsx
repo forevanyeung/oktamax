@@ -9,6 +9,7 @@ import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { useAISDKRuntime } from '@assistant-ui/react-ai-sdk';
 import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 
+import type { AuthStatus } from '../background/messages';
 import { useDrawerInset } from '../console/inset';
 import { loadSettings, onSettingsChanged } from '../settings';
 import { useChatState } from './chatState';
@@ -96,11 +97,13 @@ const ChatBody = ({ serverUrl, chatId }: { serverUrl: string; chatId: string }) 
 const Panel = ({
   children,
   style,
+  mock,
   onClose,
   onNewChat,
 }: {
   children: ReactNode;
   style: CSSProperties;
+  mock: boolean;
   onClose: () => void;
   onNewChat?: () => void;
 }) => (
@@ -117,6 +120,11 @@ const Panel = ({
   >
     <header className="chat-header">
       <h2>Okta assistant</h2>
+      {mock && (
+        <span className="chat-tag" title="Dev build without a chat server: replies are canned">
+          Mock
+        </span>
+      )}
       {onNewChat && (
         <button type="button" className="chat-text-button" onClick={onNewChat}>
           New chat
@@ -145,15 +153,53 @@ const useChatServerUrl = () => {
   return url;
 };
 
+/** What the panel shows when it can't chat yet: the server isn't set up, or the admin isn't signed in. */
+const Notice = ({
+  status,
+  onSignIn,
+  onRetry,
+}: {
+  status: AuthStatus;
+  onSignIn: () => void;
+  onRetry: () => void;
+}) =>
+  status.state === 'unreachable' ? (
+    <div className="chat-notice">
+      <p>
+        <strong>The assistant isn’t set up yet.</strong> It needs a chat server, and there’s none at{' '}
+        <code>{status.serverUrl}</code>.
+      </p>
+      <p>
+        Ask whoever runs Okta Max for your organization for the server’s URL, then set it in the
+        Okta Max toolbar popup.
+      </p>
+      <p className="chat-note">{status.error}</p>
+      <button type="button" className="chat-button" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  ) : (
+    <div className="chat-notice">
+      <p>
+        Sign in with Okta to use the assistant. It reads your org with your own, read-only access.
+      </p>
+      {status.state === 'signedOut' && status.error && <p className="chat-note">{status.error}</p>}
+      <button type="button" className="chat-button primary" onClick={onSignIn}>
+        Sign in
+      </button>
+    </div>
+  );
+
 export const ChatLauncher = () => {
   const serverUrl = useChatServerUrl();
   const { state, setOpen, startNewChat } = useChatState();
-  const { status, signIn } = useAuth();
+  const { status, signIn, refresh } = useAuth(serverUrl);
   const placement = usePlacement();
 
+  if (!serverUrl || !state || !status || status.state === 'off') return null;
   // Only on the admin console of the org the chat server serves.
-  if (!serverUrl || !state || !status?.configured) return null;
-  if (status.oktaOrgUrl && !isAdminConsoleOf(status.oktaOrgUrl)) return null;
+  if ('oktaOrgUrl' in status && !isAdminConsoleOf(status.oktaOrgUrl)) return null;
+  const canChat = status.state === 'signedIn' || status.state === 'mock';
 
   return (
     <div className="chat">
@@ -161,22 +207,14 @@ export const ChatLauncher = () => {
       {state.open ? (
         <Panel
           style={placement.panel}
+          mock={status.state === 'mock'}
           onClose={() => setOpen(false)}
-          onNewChat={status.signedIn ? startNewChat : undefined}
+          onNewChat={canChat ? startNewChat : undefined}
         >
-          {status.signedIn ? (
+          {canChat ? (
             <ChatBody serverUrl={serverUrl} chatId={state.chatId} />
           ) : (
-            <div className="chat-signin">
-              <p>
-                Sign in with Okta to use the assistant. It reads your org with your own, read-only
-                access.
-              </p>
-              {status.error && <p className="chat-note">{status.error}</p>}
-              <button type="button" className="chat-button primary" onClick={() => void signIn()}>
-                Sign in
-              </button>
-            </div>
+            <Notice status={status} onSignIn={() => void signIn()} onRetry={refresh} />
           )}
         </Panel>
       ) : (

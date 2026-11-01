@@ -7,8 +7,7 @@
 import type { UIMessage } from 'ai';
 
 import type { ChatMessageMetadata } from '@oktamax/shared';
-
-import type { StreamBuffer } from './streamBuffer';
+import type { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
 export type ChatMessage = UIMessage<ChatMessageMetadata>;
 

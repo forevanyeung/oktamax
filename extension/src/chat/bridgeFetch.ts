@@ -13,11 +13,13 @@ export const bridgeFetch: typeof fetch = (input, init = {}) =>
     const port = chrome.runtime.connect({ name: FETCH_PORT });
     const signal = init.signal ?? undefined;
 
+    // The response body's controller while it's open; unset once it's closed, errored or cancelled.
     let body: ReadableStreamDefaultController<Uint8Array> | undefined;
     const encoder = new TextEncoder();
     const fail = (error: Error) => {
       reject(error);
       body?.error(error);
+      body = undefined;
     };
 
     signal?.addEventListener('abort', () => {
@@ -25,17 +27,21 @@ export const bridgeFetch: typeof fetch = (input, init = {}) =>
       fail(new DOMException('Aborted', 'AbortError'));
     });
     port.onDisconnect.addListener(() => {
-      try {
-        body?.close();
-      } catch {
-        // already closed or errored
-      }
+      body?.close();
+      body = undefined;
     });
 
     port.onMessage.addListener((message: BridgeResponse) => {
       switch (message.type) {
         case 'head': {
-          const stream = new ReadableStream<Uint8Array>({ start: (c) => void (body = c) });
+          const stream = new ReadableStream<Uint8Array>({
+            start: (c) => void (body = c),
+            // The reader stopped early: drop the rest, which also cancels the upstream request.
+            cancel: () => {
+              body = undefined;
+              port.disconnect();
+            },
+          });
           const nullBody = message.status === 204 || message.status === 304;
           resolve(
             new Response(nullBody ? null : stream, {

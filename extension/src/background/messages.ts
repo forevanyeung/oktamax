@@ -20,10 +20,13 @@ export type BridgeResponse =
 /** One-off requests via `chrome.runtime.sendMessage`. */
 export type WorkerRequest = { type: 'oktamax:signIn' } | { type: 'oktamax:authStatus' };
 
-export interface AuthStatus {
-  configured: boolean;
-  signedIn: boolean;
-  /** The Okta org the chat server serves; the chat only appears on that org's admin console. */
-  oktaOrgUrl?: string;
-  error?: string;
-}
+/** What the chat can do. The org URL is the Okta org the chat server serves; the chat only appears on that org's admin console. */
+export type AuthStatus =
+  /** No chat server URL: the assistant is turned off. */
+  | { state: 'off' }
+  /** The chat server can't be reached (in production builds). */
+  | { state: 'unreachable'; serverUrl: string; error: string }
+  /** Dev builds without a reachable chat server: replies come from `mockChat.ts`. */
+  | { state: 'mock' }
+  | { state: 'signedOut'; oktaOrgUrl: string; error?: string }
+  | { state: 'signedIn'; oktaOrgUrl: string };
