@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 
 import { fillTemplate, pageContext, placeholders } from '../context';
+import { csvFilename, flatten, toCsv } from '../csv';
 import { cell, formatBytes, isTable, oktaError, tableColumns, timeAgo } from '../format';
 import { joinUrl, resolveUrl, splitMethod, splitUrl } from '../request';
 import { addToHistory, type HistoryEntry } from '../store';
@@ -69,6 +70,33 @@ describe('format', () => {
     expect(formatBytes(2048)).toBe('2.0 KB');
     expect(timeAgo(0, 30_000)).toBe('just now');
     expect(timeAgo(0, 3 * 3600_000)).toBe('3h ago');
+  });
+});
+
+describe('csv', () => {
+  it('flattens nested fields and leaves out links', () => {
+    expect(
+      flatten({ id: '1', credentials: { provider: { type: 'OKTA' } }, tags: ['a'], _links: {} }),
+    ).toEqual({ id: '1', 'credentials.provider.type': 'OKTA', tags: ['a'] });
+  });
+
+  it('writes every field of every row, quoting where needed', () => {
+    const csv = toCsv([
+      { id: '1', profile: { name: 'Lovelace, Ada', title: 'Said "hi"' } },
+      { id: '2', profile: { note: 'two\nlines' }, groups: ['a', 'b'], active: false, x: null },
+    ]);
+    expect(csv.split('\r\n')).toEqual([
+      'id,profile.name,profile.title,profile.note,groups,active,x',
+      '1,"Lovelace, Ada","Said ""hi""",,,,',
+      '2,,,"two\nlines","[""a"",""b""]",false,',
+    ]);
+  });
+
+  it('names files after the path', () => {
+    const date = new Date('2026-10-31T12:00:00Z');
+    expect(csvFilename('/api/v1/users?limit=200', date)).toBe('users-2026-10-31.csv');
+    expect(csvFilename('groups/00g1/users', date)).toBe('groups-00g1-users-2026-10-31.csv');
+    expect(csvFilename('/oauth2/v1/clients', date)).toBe('oauth2-v1-clients-2026-10-31.csv');
   });
 });
 

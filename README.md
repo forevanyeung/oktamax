@@ -93,6 +93,10 @@ small Postman: a prompt that sends requests to this org's API with your session.
   (for lists: one row per object, with nested fields like `profile.login` as columns), **Raw** and
   **Headers**. Okta error summaries are shown above it, and **Next page** follows the `Link`
   header.
+- Lists can be exported with **Export CSV**: download this page, download all pages (follows the
+  `Link` header page by page until the last one; Cancel stops it), or copy this page to the
+  clipboard. Every field is a column, at any depth (`credentials.provider.type`), arrays are kept as
+  JSON, and `_links` / `_embedded` are left out.
 - **History** keeps the last 100 requests (in `chrome.storage.local`). Click one to load it, ▶ to
   send it again, or press ↑ / ↓ at the prompt. Drag the drawer's top edge to resize it, or expand
   it as tall as it goes with the button next to ×, by double-clicking that edge, or by pressing

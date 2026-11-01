@@ -218,6 +218,17 @@ export const consoleStyles = `
 .status.bad { background: color-mix(in srgb, var(--delete) 15%, transparent); color: var(--delete); }
 .meta { color: var(--muted); font-size: 12px; }
 .response-bar .tabs { margin-left: 8px; }
+.export { position: relative; display: inline-flex; gap: 8px; align-items: center; }
+.export .menu {
+  position: absolute; z-index: 2; top: calc(100% + 4px); right: 0; min-width: 220px; padding: 4px 0;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  box-shadow: var(--shadow) 0 6px 18px 0;
+}
+.drawer .menu button {
+  display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 4px 12px;
+  font-size: 12px; text-align: left; white-space: nowrap;
+}
+.drawer .menu button:hover, .drawer .menu button:focus-visible { background: var(--raised); box-shadow: none; }
 .drawer .response-error { flex: none; margin-top: 8px; padding: 6px 12px; font-size: 12px; }
 .response-body { flex: 1; min-height: 0; overflow: auto; padding: 6px 0 12px; }
 .response-body .grid td {
