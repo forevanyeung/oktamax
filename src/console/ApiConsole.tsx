@@ -592,7 +592,12 @@ export const ApiConsole = () => {
             </div>
           )}
           {result.status === 'done' && (
-            <ResponseView key={result.id} response={result.response} onOpen={openUrl} />
+            <ResponseView
+              key={result.id}
+              response={result.response}
+              url={result.request.url}
+              onOpen={openUrl}
+            />
           )}
         </div>
       </div>

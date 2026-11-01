@@ -10,7 +10,7 @@
  * Run: vp build && vpx e2e/smoke.ts
  */
 import { strict as assert } from 'node:assert';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -229,6 +229,20 @@ async function main() {
   await drawer.getByRole('tab', { name: 'Table' }).click();
   await drawer.getByRole('cell', { name: 'alan@acme.com' }).waitFor();
   await page.screenshot({ path: join(import.meta.dirname, 'api-console.png') });
+
+  // A list exports as CSV, nested fields as columns.
+  await drawer.getByRole('button', { name: 'Export CSV' }).click();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    drawer.getByRole('menuitem', { name: /Download this page/ }).click(),
+  ]);
+  assert.match(download.suggestedFilename(), /^users-\d{4}-\d{2}-\d{2}\.csv$/);
+  const csv = readFileSync((await download.path())!, 'utf8').replace(/^﻿/, '');
+  assert.deepEqual(csv.split('\r\n'), [
+    'id,status,created,profile.login,profile.firstName,profile.lastName',
+    '00u1,ACTIVE,2026-01-02T03:04:05.000Z,ada@acme.com,Ada,Lovelace',
+    '00u2,SUSPENDED,2026-02-03T04:05:06.000Z,alan@acme.com,Alan,Turing',
+  ]);
 
   // The next page and links in the response open in the console.
   await drawer.getByRole('button', { name: 'Next page →' }).click();
