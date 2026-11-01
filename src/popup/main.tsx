@@ -63,6 +63,21 @@ const Popup = () => {
           </span>
         </label>
       )}
+      {settings && (
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={settings.showApiConsole}
+            onChange={(e) => update({ showApiConsole: e.target.checked })}
+          />
+          <span>
+            Show the API console
+            <small>
+              A drawer at the bottom of the console for sending API requests (Ctrl + `).
+            </small>
+          </span>
+        </label>
+      )}
     </main>
   );
 };

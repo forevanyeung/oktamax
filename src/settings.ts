@@ -5,9 +5,11 @@ export interface Settings {
   alwaysShowViewButton: boolean;
   /** Admin console theme; `system` follows the OS appearance. */
   theme: Theme;
+  /** Show the API console drawer at the bottom of the admin console. */
+  showApiConsole: boolean;
 }
 
-const defaults: Settings = { alwaysShowViewButton: false, theme: 'system' };
+const defaults: Settings = { alwaysShowViewButton: false, theme: 'system', showApiConsole: true };
 
 export const loadSettings = async (): Promise<Settings> =>
   ({ ...defaults, ...(await chrome.storage.sync.get(defaults)) }) as Settings;

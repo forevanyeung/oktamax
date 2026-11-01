@@ -10,7 +10,9 @@ with every field read-only. Settings the
 console already shows read-only admins on the page (App Settings, Sign On settings, OIDC settings,
 policy details) don't get one.
 
-- Only ever sends `GET` requests (`src/okta/api.ts` has no other method).
+- The views only ever send `GET` requests (`src/okta/api.ts` has no other method).
+- An **API console** drawer at the bottom of the page sends any request you type to the Okta API
+  (see below). It's the only part of the extension that can send something other than `GET`.
 - Uses the admin's existing session. No tokens, no extra permissions beyond `storage`.
 - The UI is rendered in a shadow DOM, so it can't break the admin console's styles (or the reverse).
 
@@ -44,6 +46,7 @@ The toolbar popup has two settings:
   the whole admin console, keeping Okta's own colors and hues with a dark mood.
 - **Show view icons next to Edit buttons too**: turn it on as a full admin to compare the view
   dialogs with the real edit dialogs side by side.
+- **Show the API console**: the drawer described below (on by default).
 
 Where Edit is an item of an **Actions** menu, a **View** item is added to the same menu (its tooltip
 says it comes from Okta Max).
@@ -63,17 +66,55 @@ says it comes from Okta Max).
 
 Every dialog also has a collapsed **API response (JSON)** section, for fields the form doesn't map.
 
+## API console
+
+Pull up the **API** tab at the bottom of any admin console page (or press `Ctrl` + `` ` ``) for a
+small Postman: a prompt that sends requests to this org's API with your session.
+
+- Type a path and press Enter: `/api/v1/users?limit=5`. Paths without a leading slash are under
+  `/api/v1/` (`groups?q=Everyone`), and pasted full URLs keep only their path, so requests always
+  go to the org you're on.
+- As you type, the prompt suggests endpoints from Okta's API reference (the Management API's
+  OpenAPI spec): paths, query parameters after `?`, or endpoints whose summary has the words you
+  type (`list group members`). ↓ / Tab / Enter pick one, Esc closes the list, `Ctrl` + Space opens
+  it.
+- Path parameters like `{userId}`, `{groupId}`, `{appId}`, `{policyId}` or `{authServerId}` are
+  filled in from the page you're on, like rockstar: on a user's page, suggestions use that user's
+  ID, and `/api/v1/users/{userId}/groups` is sent for that user. With an empty prompt, the
+  suggestions are the page's objects' endpoints. The page's objects are also shown next to
+  Params / Body; click one to browse its endpoints.
+- Pick the method from the menu, or type it first (`post groups`). `POST`, `PUT`, `PATCH` and
+  `DELETE` send Okta's XSRF token like the console does, so they work with your admin role's
+  permissions. A read-only admin gets a 403.
+- **Params** edits the query string as a table; **Body** takes JSON (Format, `⌘/Ctrl` + Enter to
+  send).
+- The response shows its status, time and size, and has four views: **Pretty** (a collapsible,
+  colored JSON tree; `_links` start collapsed, and API links in it open with a click), **Table**
+  (for lists: one row per object, with nested fields like `profile.login` as columns), **Raw** and
+  **Headers**. Okta error summaries are shown above it, and **Next page** follows the `Link`
+  header.
+- **History** keeps the last 100 requests (in `chrome.storage.local`). Click one to load it, ▶ to
+  send it again, or press ↑ / ↓ at the prompt. Drag the drawer's top edge to resize it, or expand
+  it as tall as it goes with the button next to ×, by double-clicking that edge, or by pressing
+  `Ctrl` + `` ` `` twice quickly.
+
+The endpoint list (`src/console/endpoints.json`) is generated from
+[Okta's spec](https://github.com/okta/okta-management-openapi-spec): run `npm run endpoints` to
+update it.
+
 ## How it works
 
 ```
 src/
+  console/           the API console drawer: requests, history, endpoint suggestions, JSON tree
+                     and table views
   content/
     index.tsx        entry point: mounts the dialog host and starts the scanner
     theme.iife.ts    turns dark mode on and off with the setting
     pageWorld.iife.ts page-world hooks: keeps loads dark until dark mode is ready
     scanner.ts       re-scans on DOM/URL changes; adds/removes view buttons
     dom.ts           finds sections by heading text and rows by object name; detects Edit controls
-    viewHost.tsx     shadow DOM + React root
+    viewHost.tsx     shadow DOM + React root (view dialogs and the API console)
     ViewDialog.tsx   loads the data and shows the read-only form
   form/
     schema.ts        declarative form description + builders (text, radio, tags, ...)
@@ -154,8 +195,9 @@ npm run test:e2e   # builds, loads the extension in Chromium against a mock admi
 
 The e2e test (`e2e/smoke.ts`) needs Playwright's Chromium (`npx playwright install chromium`).
 Branded Chrome no longer accepts `--load-extension`. The test checks that icons only appear
-where Edit is missing, that inputs/selects/checkboxes can't be changed, and that only `GET`
-requests are sent. Screenshots are saved to `e2e/*.png`.
+where Edit is missing, that inputs/selects/checkboxes can't be changed, that the views only send
+`GET` requests, and that the API console sends requests (with the XSRF token for `POST`) and keeps
+their history. Screenshots are saved to `e2e/*.png`.
 
 ### Testing against a real org
 

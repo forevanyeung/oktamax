@@ -1,10 +1,12 @@
 /**
  * Mounts a React root inside a shadow DOM, so Okta's page CSS and ours can't
- * affect each other, and exposes `openView` to the scanner.
+ * affect each other, and exposes `openView` to the scanner. Also hosts the API console.
  */
 import { useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { ApiConsole } from '../console/ApiConsole';
+import { consoleStyles } from '../console/styles';
 import { dialogStyles } from '../form/styles';
 import { watchDarkMode } from '../settings';
 import type { ViewTarget } from '../views/types';
@@ -25,9 +27,14 @@ const subscribe = (listener: () => void) => {
 
 const App = () => {
   const target = useSyncExternalStore(subscribe, () => current);
-  return target ? (
-    <ViewDialog key={target.key} target={target} onClose={() => setCurrent(undefined)} />
-  ) : null;
+  return (
+    <>
+      <ApiConsole />
+      {target && (
+        <ViewDialog key={target.key} target={target} onClose={() => setCurrent(undefined)} />
+      )}
+    </>
+  );
 };
 
 export function mountViewHost(): { openView: (target: ViewTarget) => void } {
@@ -41,7 +48,7 @@ export function mountViewHost(): { openView: (target: ViewTarget) => void } {
 
   const shadowRoot = host.attachShadow({ mode: 'open' });
   const hostStyle = document.createElement('style');
-  hostStyle.textContent = `:host { all: initial; }\n${dialogStyles}`;
+  hostStyle.textContent = `:host { all: initial; }\n${dialogStyles}\n${consoleStyles}`;
   const appRootElement = document.createElement('div');
   shadowRoot.append(hostStyle, appRootElement);
 

@@ -40,6 +40,8 @@ export default defineConfig(({ command }) => ({
     ignorePatterns: ['dist/**'],
   },
   fmt: {
+    // Written by `npm run endpoints`.
+    ignorePatterns: ['src/console/endpoints.json'],
     semi: true,
     singleQuote: true,
     printWidth: 100,
