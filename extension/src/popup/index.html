@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Okta Max</title>
+    <style>
+      :root {
+        --text: #272727;
+        --muted: #6e6e6e;
+        --bg: #fff;
+        --border: #cbcbcb;
+        --accent: #4c64e1;
+        --selected: #f2f3fd;
+        --error: #d93934;
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --text: #e6e6ea;
+        --muted: #a1a2ab;
+        --bg: #1c1d21;
+        --border: #4a4c55;
+        --accent: #8b9cf6;
+        --selected: #232a4d;
+        --error: #f27f7a;
+      }
+      body {
+        margin: 0;
+        width: 320px;
+        font:
+          14px/1.5 Inter,
+          -apple-system,
+          system-ui,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      main {
+        padding: 16px;
+      }
+      header {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 0 0 8px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      .theme {
+        display: flex;
+        margin: 0 0 16px;
+        padding: 0;
+        border: 0;
+      }
+      .theme legend {
+        margin: 0 0 6px;
+        padding: 0;
+        font-weight: 600;
+      }
+      .theme label {
+        flex: 1;
+        padding: 6px 0;
+        border: 1px solid var(--border);
+        text-align: center;
+        cursor: pointer;
+      }
+      .theme label + label {
+        margin-left: -1px;
+      }
+      .theme label:first-of-type {
+        border-radius: 6px 0 0 6px;
+      }
+      .theme label:last-of-type {
+        border-radius: 0 6px 6px 0;
+      }
+      .theme label:has(:checked) {
+        position: relative;
+        border-color: var(--accent);
+        background: var(--selected);
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .theme label:has(:focus-visible) {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      .theme input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .switch {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        cursor: pointer;
+      }
+      .switch input {
+        margin: 3px 0 0;
+        accent-color: var(--accent);
+      }
+      .server {
+        margin-top: 16px;
+      }
+      .server label {
+        display: block;
+        font-weight: 600;
+      }
+      .server div {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .server input {
+        flex: 1;
+        min-width: 0;
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font: inherit;
+        color: inherit;
+        background: transparent;
+      }
+      .server input:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+        border-color: var(--accent);
+      }
+      .server input[aria-invalid='true'] {
+        border-color: var(--error);
+      }
+      .server button {
+        padding: 6px 12px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        font: inherit;
+        font-weight: 600;
+        color: var(--accent);
+        background: transparent;
+        cursor: pointer;
+      }
+      .server button:hover {
+        background: var(--selected);
+      }
+      .server .error {
+        margin-top: 4px;
+        color: var(--error);
+      }
+      small {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

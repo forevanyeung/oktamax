@@ -1,0 +1,42 @@
+{
+  "name": "@oktamax/extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension: read-only 'View' dialogs, an API console, dark mode and an on-page assistant for the Okta admin console.",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "icons": "node scripts/icons.mjs",
+    "endpoints": "node scripts/endpoints.mjs",
+    "check": "vp check",
+    "test": "vp test",
+    "test:e2e": "vp build && vpx e2e/smoke.ts && vpx e2e/chat.ts",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p e2e"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^4.0.163",
+    "@assistant-ui/react": "^0.15.32",
+    "@assistant-ui/react-ai-sdk": "^1.4.21",
+    "@assistant-ui/react-markdown": "^0.14.24",
+    "@oktamax/shared": "*",
+    "ai": "^7.0.159",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^3.0.0",
+    "@hono/node-server": "^2.1.5",
+    "@oktamax/server": "*",
+    "@types/chrome": "^0.3.7",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "playwright": "^1.64.1",
+    "typescript": "^7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
+    "vite-plus": "1.4.0"
+  }
+}
