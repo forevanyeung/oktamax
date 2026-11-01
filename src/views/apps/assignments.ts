@@ -158,11 +158,13 @@ function findRows(link: RegExp) {
 function afterType(row: Element): Element {
   const cell = row.querySelector<HTMLElement>('.people-assignment-type');
   if (!cell) return addActionsCell(row);
-  cell.style.textAlign = 'right';
+  // The column is narrow; keep "Group" and the eye on one line.
+  Object.assign(cell.style, { textAlign: 'right', whiteSpace: 'nowrap' });
   const header = row.closest('table')?.querySelector<HTMLElement>('thead th:last-child');
   if (header) header.style.textAlign = 'right';
+  // 12px from "Group" to the eye (with the button's 3px padding), like the padding of Okta's pencil link.
   const actions = createActions('span');
-  Object.assign(actions.style, { display: 'inline-flex', verticalAlign: 'top', marginLeft: '2px' });
+  Object.assign(actions.style, { display: 'inline-flex', verticalAlign: 'top', marginLeft: '9px' });
   cell.append(actions);
   return actions;
 }
