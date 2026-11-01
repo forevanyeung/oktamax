@@ -1,4 +1,4 @@
-import { addActionsCell, createActions, isVisible } from '../../content/dom';
+import { addActionsCell, isVisible } from '../../content/dom';
 import {
   checkbox,
   note,
@@ -151,25 +151,13 @@ function findRows(link: RegExp) {
   });
 }
 
-/**
- * Read-only admins get no actions column. Add one, with the view icon where
- * Okta's pencil goes: first in the cell, before the Delete icon.
- */
-function pencilSlot(row: Element): Element {
-  const slot = createActions('div');
-  // Okta's pencil link has 12px of padding; the view button has 3px of its own.
-  Object.assign(slot.style, { display: 'inline-flex', paddingLeft: '12px' });
-  addActionsCell(row).append(slot);
-  return slot;
-}
-
 export function assignmentTargets(appId: string): ViewTarget[] {
   const users = findRows(/^\/admin\/user\/profile\/view\/(\w+)$/).map(({ id, anchor, row }) => ({
     key: `app-user:${appId}:${id}`,
     title: 'View User Assignment',
     anchor,
     scope: row,
-    addActions: () => pencilSlot(row),
+    addActions: () => addActionsCell(row),
     load: () => userAssignmentView(appId, id),
   }));
   const groups = findRows(/^\/admin\/group\/(\w+)$/).map(({ id, anchor, row }) => ({
@@ -177,7 +165,7 @@ export function assignmentTargets(appId: string): ViewTarget[] {
     title: 'View Group Assignment',
     anchor,
     scope: row,
-    addActions: () => pencilSlot(row),
+    addActions: () => addActionsCell(row),
     load: () => groupAssignmentView(appId, id),
   }));
   return [...users, ...groups];
