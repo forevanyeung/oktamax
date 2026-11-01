@@ -152,21 +152,15 @@ function findRows(link: RegExp) {
 }
 
 /**
- * Read-only admins get no actions column; put the view icon right after the
- * person's assignment type ("Group"), right-aligned with it.
+ * Read-only admins get no actions column. Add one, with the view icon where
+ * Okta's pencil goes: first in the cell, before the Delete icon.
  */
-function afterType(row: Element): Element {
-  const cell = row.querySelector<HTMLElement>('.people-assignment-type');
-  if (!cell) return addActionsCell(row);
-  // The column is narrow; keep "Group" and the eye on one line.
-  Object.assign(cell.style, { textAlign: 'right', whiteSpace: 'nowrap' });
-  const header = row.closest('table')?.querySelector<HTMLElement>('thead th:last-child');
-  if (header) header.style.textAlign = 'right';
-  // 12px from "Group" to the eye (with the button's 3px padding), like the padding of Okta's pencil link.
-  const actions = createActions('span');
-  Object.assign(actions.style, { display: 'inline-flex', verticalAlign: 'top', marginLeft: '9px' });
-  cell.append(actions);
-  return actions;
+function pencilSlot(row: Element): Element {
+  const slot = createActions('div');
+  // Okta's pencil link has 12px of padding; the view button has 3px of its own.
+  Object.assign(slot.style, { display: 'inline-flex', paddingLeft: '12px' });
+  addActionsCell(row).append(slot);
+  return slot;
 }
 
 export function assignmentTargets(appId: string): ViewTarget[] {
@@ -175,7 +169,7 @@ export function assignmentTargets(appId: string): ViewTarget[] {
     title: 'View User Assignment',
     anchor,
     scope: row,
-    addActions: () => afterType(row),
+    addActions: () => pencilSlot(row),
     load: () => userAssignmentView(appId, id),
   }));
   const groups = findRows(/^\/admin\/group\/(\w+)$/).map(({ id, anchor, row }) => ({
@@ -183,7 +177,7 @@ export function assignmentTargets(appId: string): ViewTarget[] {
     title: 'View Group Assignment',
     anchor,
     scope: row,
-    addActions: () => addActionsCell(row),
+    addActions: () => pencilSlot(row),
     load: () => groupAssignmentView(appId, id),
   }));
   return [...users, ...groups];
