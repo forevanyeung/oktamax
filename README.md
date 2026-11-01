@@ -39,8 +39,9 @@ Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, 
 `npm run dev:extension` (`vp dev`) builds with hot reload. Load `extension/dist/` once in the same
 way. `npm run dev` runs it together with the chat server (`npm run dev:server`). A dev build is
 only a thin loader for the dev server's code, so keep the dev server running while you use it;
-without it Chrome reports that the service worker can't be registered. The build also points at
-the dev server's port: if port 5173 was taken and it picked another, reload the extension once.
+without it Chrome reports that the service worker can't be registered. The build points at the
+dev server's port, 5273; to run a second checkout alongside, start it with another
+`EXTENSION_DEV_PORT` and reload the extension once.
 
 In a dev build, the assistant works without any setup: when no chat server is reachable, the
 service worker answers from a mock (`extension/src/background/mockChat.ts`) and the panel is tagged

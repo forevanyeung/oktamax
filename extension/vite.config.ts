@@ -26,6 +26,10 @@ export default defineConfig(({ command }) => ({
     __THEME_CACHE_KEY__: JSON.stringify(themeHash(command)),
   },
   server: {
+    // A dev build loads its code from this port, so it mustn't move when the port is taken: fail
+    // instead (set EXTENSION_DEV_PORT to run another checkout alongside, then reload the extension).
+    port: Number(process.env.EXTENSION_DEV_PORT ?? 5273),
+    strictPort: true,
     // CRXJS serves content scripts from the dev server during `vp dev`.
     cors: { origin: [/chrome-extension:\/\//] },
   },
