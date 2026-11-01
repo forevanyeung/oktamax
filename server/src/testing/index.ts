@@ -2,7 +2,7 @@
  * Test doubles shared by the server tests and the extension's end-to-end test:
  * a fake Okta org (at the fetch layer) and a scripted model in place of Bedrock.
  */
-import type { LanguageModelV4StreamPart } from '@ai-sdk/provider';
+import type { LanguageModelV4Prompt, LanguageModelV4StreamPart } from '@ai-sdk/provider';
 import { fileURLToPath } from 'node:url';
 
 import { simulateReadableStream } from 'ai';
@@ -66,16 +66,49 @@ const usage = {
   outputTokens: { total: 10, text: 10, reasoning: 0 },
 };
 
+/** The tool the scripted model calls for a question, and how it then answers. */
+const SCRIPTS: Array<{ when: RegExp; tool: string; input: object; answer: string }> = [
+  {
+    when: /\blogs\b/i,
+    tool: 'open_in_api_console',
+    input: { path: '/api/v1/logs?filter=eventType eq "user.authentication.sso"' },
+    answer: 'I opened the sign-in logs in the API console.',
+  },
+  {
+    when: /\bgo to\b/i,
+    tool: 'navigate',
+    input: { path: '/admin/groups' },
+    answer: 'Here are your groups.',
+  },
+  {
+    when: /./,
+    tool: 'list_users',
+    input: { search: 'status eq "LOCKED_OUT"' },
+    answer: 'One user is locked out: locked@example.com.',
+  },
+];
+
+const lastQuestion = (prompt: LanguageModelV4Prompt) => {
+  const index = prompt.findLastIndex((m) => m.role === 'user');
+  const content = prompt[index]?.content;
+  const text = Array.isArray(content)
+    ? content.map((part) => (part.type === 'text' ? part.text : '')).join('')
+    : '';
+  // Tool results since the question mean the lookup is done.
+  return { text, answered: prompt.slice(index).some((m) => m.role === 'tool') };
+};
+
 /**
- * Step 1: call `search_users`. Step 2: answer, one word every `delayMs`, so tests
- * can disconnect mid-answer.
+ * Step 1: call a tool picked from the question (`SCRIPTS`). Step 2: answer, one
+ * word every `delayMs`, so tests can disconnect mid-answer.
  */
 export const scriptedModel = (delayMs = 40) =>
   new MockLanguageModelV4({
     doStream: async ({ prompt }) => {
-      const hasToolResult = prompt.some((m) => m.role === 'tool');
-      const words = 'One user is locked out: locked@example.com.'.split(/(?<= )/);
-      const chunks: LanguageModelV4StreamPart[] = hasToolResult
+      const question = lastQuestion(prompt);
+      const script = SCRIPTS.find((s) => s.when.test(question.text))!;
+      const words = script.answer.split(/(?<= )/);
+      const chunks: LanguageModelV4StreamPart[] = question.answered
         ? [
             { type: 'text-start' as const, id: 't1' },
             ...words.map((delta) => ({ type: 'text-delta' as const, id: 't1', delta })),
@@ -89,9 +122,9 @@ export const scriptedModel = (delayMs = 40) =>
         : [
             {
               type: 'tool-call' as const,
-              toolCallId: 'call1',
-              toolName: 'list_users',
-              input: JSON.stringify({ search: 'status eq "LOCKED_OUT"' }),
+              toolCallId: crypto.randomUUID(),
+              toolName: script.tool,
+              input: JSON.stringify(script.input),
             },
             {
               type: 'finish' as const,

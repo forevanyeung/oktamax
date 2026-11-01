@@ -15,6 +15,12 @@ import {
 } from 'ai';
 
 import type { ChatMessageMetadata, PageContext, SendMessageBody } from '@oktamax/shared';
+import {
+  checkPageTool,
+  NAVIGATE,
+  OPEN_IN_API_CONSOLE,
+  PAGE_TOOLS,
+} from '@oktamax/shared/pageTools';
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
 import type { BridgeRequest } from './messages';
@@ -26,6 +32,13 @@ interface Lookup {
   input: unknown;
   output: unknown;
 }
+
+/** A page tool call; its output comes from the same checks as the server's. */
+const pageTool = (tool: string, path: string): Lookup => ({
+  tool,
+  input: { path },
+  output: checkPageTool(tool, { path }),
+});
 
 interface Reply {
   lookups?: Lookup[];
@@ -76,6 +89,25 @@ function reply(question: string, page: PageContext | undefined): Reply {
       error: 'Something went wrong generating a response.',
     };
   }
+  if (/\blogs?\b|sign-?ins?\b|signed in/i.test(question)) {
+    const app = APPS.find((a) => page?.objectIds.includes(a.id)) ?? APPS[0]!;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const path = `/api/v1/logs?filter=eventType eq "user.authentication.sso" and target.id eq "${app.id}"&since=${today.toISOString()}`;
+    return {
+      lookups: [
+        { tool: 'list_applications', input: { q: app.label }, output: [app] },
+        pageTool(OPEN_IN_API_CONSOLE, path),
+      ],
+      text: `I opened today's sign-ins to **${app.label}** in the API console below: single sign-on events since midnight, newest last. Use **Table** to see one row per sign-in, or **Export CSV** to download them.`,
+    };
+  }
+  if (/\b(go|take me|navigate|bring me)\b/i.test(question)) {
+    return {
+      lookups: [pageTool(NAVIGATE, '/admin/groups')],
+      text: 'Here are your groups. Pick one to see its members and the apps assigned to it.',
+    };
+  }
   if (/lock/i.test(question)) {
     return {
       lookups: [
@@ -122,7 +154,7 @@ function reply(question: string, page: PageContext | undefined): Reply {
     text: [
       ...where.filter(Boolean),
       '',
-      "This is the **dev mock**: there's no chat server, so replies are canned. Try asking about *locked out* users, apps without *MFA*, a *long* answer, or an *error*.",
+      "This is the **dev mock**: there's no chat server, so replies are canned. Try asking about *locked out* users, apps without *MFA*, to bring up today's *sign-ins*, to *go to* the groups page, for a *long* answer, or for an *error*.",
     ].join('\n'),
   };
 }
@@ -160,21 +192,18 @@ function start(chatId: string, messages: Message[]): StreamBuffer {
       for (const [i, lookup] of (answer.lookups ?? []).entries()) {
         const toolCallId = `mock-${i}`;
         writer.write({ type: 'start-step' });
+        // Okta's tools come from MCP (dynamic); the page tools are the server's own.
+        const dynamic = !(PAGE_TOOLS as readonly string[]).includes(lookup.tool);
         writer.write({
           type: 'tool-input-available',
           toolCallId,
           toolName: lookup.tool,
           input: lookup.input,
-          dynamic: true,
+          dynamic,
         });
         await sleep(LOOKUP_MS, signal);
         if (signal.aborted) return writer.write({ type: 'abort' });
-        writer.write({
-          type: 'tool-output-available',
-          toolCallId,
-          output: lookup.output,
-          dynamic: true,
-        });
+        writer.write({ type: 'tool-output-available', toolCallId, output: lookup.output, dynamic });
         writer.write({ type: 'finish-step' });
       }
       writer.write({ type: 'start-step' });

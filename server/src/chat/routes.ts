@@ -26,6 +26,7 @@ import * as z from 'zod';
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
 import { requireAuth } from '../auth';
+import { pageTools } from './pageTools';
 import { instructions, withPageContext } from './prompt';
 import type { Chat, ChatMessage, ChatStore } from './store';
 
@@ -95,7 +96,7 @@ export function createChatRoutes({ model, store, mcpUrl }: ChatDeps) {
       messages: await convertToModelMessages(withPageContext(chat.messages), {
         ignoreIncompleteToolCalls: true,
       }),
-      tools: await mcp.tools(),
+      tools: { ...(await mcp.tools()), ...pageTools },
       stopWhen: isStepCount(20),
       abortSignal: abort.signal,
     });

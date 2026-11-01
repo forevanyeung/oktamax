@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./streamBuffer": "./src/streamBuffer.ts"
+    "./streamBuffer": "./src/streamBuffer.ts",
+    "./pageTools": "./src/pageTools.ts"
   }
 }

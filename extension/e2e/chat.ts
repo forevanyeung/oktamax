@@ -136,6 +136,45 @@ async function main() {
   assert.ok((await panelBottom()) <= drawerTop, 'chat sits above the open API console');
   await page.screenshot({ path: join(import.meta.dirname, 'chat-api-console.png') });
 
+  // --- Page actions: open a request in the API console --------------------------
+  await drawer.getByLabel('Request URL').fill('');
+  const ask = async (question: string) => {
+    const input = page
+      .getByRole('dialog', { name: 'Okta assistant' })
+      .getByPlaceholder('Ask about this org…');
+    await page
+      .getByRole('dialog', { name: 'Okta assistant' })
+      .getByRole('button', { name: 'Send' })
+      .waitFor();
+    await input.fill(question);
+    await input.press('Enter');
+  };
+  await ask('Bring up the logs for today');
+  await reloaded.getByText('Opened in the API console:').waitFor();
+  await page.waitForFunction(() =>
+    (
+      document
+        .querySelector('[data-oktamax="host"]')!
+        .shadowRoot!.querySelector('[aria-label="Request URL"]') as HTMLInputElement | null
+    )?.value.startsWith('/api/v1/logs?filter='),
+  );
+  await reloaded.getByText('I opened the sign-in logs in the API console.').waitFor();
+
+  // --- Page actions: navigate, once ----------------------------------------------
+  await ask('Go to my groups');
+  await page.waitForURL(`${ADMIN}/admin/groups`);
+  const moved = page.getByRole('dialog', { name: 'Okta assistant' });
+  await moved.getByText('Here are your groups.').waitFor({ timeout: 10_000 });
+  await moved.getByText('Went to').waitFor();
+  // Calls in the history don't run again, on reload or on another page.
+  await page.goto(`${ADMIN}/admin/users`);
+  await page
+    .getByRole('dialog', { name: 'Okta assistant' })
+    .getByText('Here are your groups.')
+    .waitFor();
+  await page.waitForTimeout(1_000);
+  assert.equal(new URL(page.url()).pathname, '/admin/users', "history doesn't navigate again");
+
   // --- Dark mode ---------------------------------------------------------------
   await worker.evaluate(() => chrome.storage.sync.set({ theme: 'dark' }));
   await page.reload();

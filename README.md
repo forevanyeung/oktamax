@@ -44,8 +44,9 @@ In a dev build, the assistant works without any setup: when no chat server is re
 service worker answers from a mock (`extension/src/background/mockChat.ts`) and the panel is tagged
 **Mock**. Its canned replies know the page you're on, stream word by word, keep going across page
 loads, and cover the UI's cases: ask about _locked out_ users or apps without _MFA_ (lookups and a
-table), for a _long_ answer (markdown), or for an _error_. Production builds don't include the
-mock.
+table), to bring up today's _sign-ins_ (opens them in the API console), to _go to_ the groups page
+(navigates), for a _long_ answer (markdown), or for an _error_. Production builds don't include
+the mock.
 
 ### Staying up to date on another machine
 
@@ -167,6 +168,20 @@ Admin console tab                     Service worker              Server        
     nothing is running).
   - **Stop** calls `POST /api/chats/:id/stop`, because with resumable streams a dropped connection
     doesn't cancel anything.
+- **Acting on the page.** Besides Okta's read tools, the model has two page tools
+  (`shared/src/pageTools.ts`). The server only checks their input; the extension carries them out
+  when they show up in the reply (`extension/src/chat/pageActions.ts`):
+  - `open_in_api_console` opens a `GET /api/...` request in the API console and sends it, for "bring
+    up the logs for…" or "show me all…". You get the full response with paging, the table view and
+    CSV export.
+  - `navigate` loads an admin console page, for "take me to…". The answer carries on on the new
+    page.
+
+  Both only take paths on the current org; the API console only sends GETs this way. Each call
+  runs once, in the tab you're looking at, and calls already in the history don't run again; the
+  chat shows **Open again** / **Go again** for them. The model can't click or type on Okta's pages:
+  it reads page text and log data, which others can influence, so that would let them steer an
+  admin's clicks.
 
 > Page text, tool results and questions are sent to Bedrock in your AWS account. They can include
 > user names and emails from the pages and API responses. Make sure that's acceptable before

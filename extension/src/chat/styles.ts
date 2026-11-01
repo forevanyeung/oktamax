@@ -104,6 +104,15 @@ export const CHAT_CSS = `
   background: var(--chat-raised); font: 11px/16px ${MONO_FONT}; white-space: pre-wrap;
 }
 .chat-tool.failed summary { color: var(--error-text); }
+.chat-action {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 4px 0; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 8px; font-size: 12px; line-height: 18px;
+}
+.chat-action code { font: 11px ${MONO_FONT}; }
+.chat-action.failed { border-color: transparent; background: var(--error-bg); color: var(--error-text); }
+.chat-action-icon { flex: none; color: var(--blue); font: 600 11px ${MONO_FONT}; }
+.chat-action-label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.chat-action-note { flex-basis: 100%; color: var(--muted); }
 .chat-tool-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
 .chat-spinner {
   width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--blue);

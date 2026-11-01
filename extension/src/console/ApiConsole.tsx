@@ -9,6 +9,7 @@ import { loadSettings, onSettingsChanged } from '../settings';
 import { fillTemplate, LABELS, pageContext, placeholders, type PageContext } from './context';
 import { timeAgo } from './format';
 import { setDrawerInset } from './inset';
+import { setConsoleHandler } from './remote';
 import { Prompt, type PromptHandle } from './Prompt';
 import { joinUrl, send, splitUrl, type ApiRequest, type ApiResponse, type Param } from './request';
 import { ResponseView } from './ResponseView';
@@ -384,6 +385,18 @@ export const ApiConsole = () => {
     if (state?.open) prompt.current?.focus();
   }, [state?.open]);
 
+  // Requests the chat opens here; set below once `load` exists, unset while turned off.
+  const remote = useRef<(request: ApiRequest) => void>(undefined);
+  useEffect(
+    () =>
+      setConsoleHandler((request) => {
+        if (!remote.current) return false;
+        remote.current(request);
+        return true;
+      }),
+    [],
+  );
+
   const shown = !!state?.open && enabled;
   useEffect(() => {
     const el = drawer.current;
@@ -430,6 +443,7 @@ export const ApiConsole = () => {
     }
   };
 
+  remote.current = undefined;
   if (!state || !enabled) return null;
   const { draft } = state;
 
@@ -441,6 +455,10 @@ export const ApiConsole = () => {
     if (sendNow) void run(request);
   };
   const openUrl = (url: string) => load({ method: 'GET', url, body: '' }, true);
+  remote.current = (request) => {
+    update({ open: true });
+    load(request, true);
+  };
 
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();

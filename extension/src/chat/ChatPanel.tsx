@@ -12,6 +12,7 @@ import { useEffect, useState, type CSSProperties, type KeyboardEvent, type React
 import { useDrawerInset } from '../console/inset';
 import { loadSettings, onSettingsChanged } from '../settings';
 import { useChatState } from './chatState';
+import { usePageActions } from './pageActions';
 import { CHAT_CSS } from './styles';
 import { Thread } from './Thread';
 import { isAdminConsoleOf, useAuth, type ChatStatus } from './useAuth';
@@ -64,6 +65,7 @@ const Conversation = ({
 }) => {
   const chat = useOktaChat(serverUrl, chatId, initialMessages);
   const runtime = useAISDKRuntime(chat);
+  usePageActions(chat.messages, initialMessages);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
