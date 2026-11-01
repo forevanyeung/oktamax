@@ -9,11 +9,11 @@ export type ChatStatus = AuthStatus | { state: 'noWorker'; error: string };
 const STATUS_TIMEOUT_MS = 5_000;
 
 const ask = async (request: WorkerRequest, timeoutMs?: number): Promise<ChatStatus> => {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: number | undefined;
   try {
     const answer = chrome.runtime.sendMessage<WorkerRequest, AuthStatus | undefined>(request);
     const timeout = new Promise<undefined>((resolve) => {
-      if (timeoutMs) timer = setTimeout(resolve, timeoutMs);
+      if (timeoutMs) timer = window.setTimeout(resolve, timeoutMs);
     });
     const status = await Promise.race([answer, timeout]);
     return status ?? { state: 'noWorker', error: 'No answer from the service worker.' };
