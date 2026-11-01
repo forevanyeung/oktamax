@@ -311,6 +311,19 @@ async function main() {
   await userDrawer.getByRole('button', { name: 'Expand console' }).waitFor();
   assert.equal(await userDrawer.evaluate((el) => el.getBoundingClientRect().height), 420);
 
+  // Ctrl + ` twice expands; once closes and opens.
+  await userPrompt.focus();
+  await page.keyboard.press('Control+`');
+  await page.keyboard.press('Control+`');
+  await userDrawer.getByRole('button', { name: 'Restore console' }).waitFor();
+  await page.keyboard.press('Control+`');
+  await page.keyboard.press('Control+`');
+  await userDrawer.getByRole('button', { name: 'Expand console' }).waitFor();
+  await page.keyboard.press('Control+`');
+  await userDrawer.waitFor({ state: 'detached' });
+  await page.keyboard.press('Control+`');
+  await userDrawer.waitFor();
+
   await context.close();
   console.log('e2e smoke test passed');
 }

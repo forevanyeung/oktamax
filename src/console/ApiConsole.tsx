@@ -59,6 +59,7 @@ const maxHeight = () => clampHeight(Infinity);
 // Expanding and restoring slide the drawer's top edge, like a sheet. Only its
 // transform is animated, so a large response isn't laid out again every frame.
 const SLIDE = { duration: 320, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' };
+const DOUBLE_PRESS_MS = 300;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ParamsEditor = ({ url, onChange }: { url: string; onChange: (url: string) => void }) => {
@@ -311,7 +312,8 @@ export const ApiConsole = () => {
 
   const setMaximized = (maximized: boolean) => {
     const el = drawer.current;
-    if (!state || !el || shrinking.current) return;
+    if (!state || shrinking.current) return;
+    if (!el) return update({ maximized });
     const from = el.offsetHeight;
     const to = maximized ? maxHeight() : clampHeight(state.height);
     if (to > from && !reducedMotion()) grownFrom.current = from;
@@ -327,15 +329,40 @@ export const ApiConsole = () => {
     );
   };
 
+  // Ctrl + ` opens and closes the drawer; pressed twice quickly, it expands or
+  // restores it. Closing waits to see whether a second press follows.
+  const lastPress = useRef(0);
+  const closing = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onShortcut = (event: KeyboardEvent | React.KeyboardEvent) => {
+    if (event.key !== '`' || !event.ctrlKey || event.repeat || !state) return;
+    event.preventDefault();
+    const now = performance.now();
+    const twice = now - lastPress.current < DOUBLE_PRESS_MS;
+    lastPress.current = twice ? 0 : now;
+    if (twice) {
+      clearTimeout(closing.current);
+      closing.current = undefined;
+      update({ open: true });
+      setMaximized(!state.maximized);
+    } else if (!state.open) {
+      update({ open: true });
+    } else {
+      closing.current = setTimeout(() => {
+        closing.current = undefined;
+        update({ open: false });
+      }, DOUBLE_PRESS_MS);
+    }
+  };
+  const shortcut = useRef(onShortcut);
+  shortcut.current = onShortcut;
+
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === '`' && event.ctrlKey && enabledRef.current) {
-        event.preventDefault();
-        setState((s) => s && { ...s, open: !s.open });
-      }
-    };
+    const onKey = (event: KeyboardEvent) => enabledRef.current && shortcut.current(event);
     addEventListener('keydown', onKey);
-    return () => removeEventListener('keydown', onKey);
+    return () => {
+      removeEventListener('keydown', onKey);
+      clearTimeout(closing.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -431,7 +458,7 @@ export const ApiConsole = () => {
       // Keeps the console's keyboard shortcuts from seeing what's typed here.
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === '`' && e.ctrlKey) update({ open: false });
+        onShortcut(e);
       }}
     >
       <div
@@ -462,11 +489,11 @@ export const ApiConsole = () => {
               onEscape={() => update({ open: false })}
             />
             <div className="drawer-controls">
-              <span className="hint">Ctrl + ` to toggle</span>
+              <span className="hint">Ctrl + ` to toggle, twice to expand</span>
               <button
                 type="button"
                 className="icon"
-                title={state.maximized ? 'Restore console' : 'Expand console'}
+                title={`${state.maximized ? 'Restore' : 'Expand'} console (Ctrl + \` twice)`}
                 aria-label={state.maximized ? 'Restore console' : 'Expand console'}
                 aria-pressed={state.maximized}
                 onClick={() => setMaximized(!state.maximized)}

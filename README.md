@@ -95,7 +95,8 @@ small Postman: a prompt that sends requests to this org's API with your session.
   header.
 - **History** keeps the last 100 requests (in `chrome.storage.local`). Click one to load it, ▶ to
   send it again, or press ↑ / ↓ at the prompt. Drag the drawer's top edge to resize it, or expand
-  it over the whole page with the button next to ×, or by double-clicking that edge.
+  it as tall as it goes with the button next to ×, by double-clicking that edge, or by pressing
+  `Ctrl` + `` ` `` twice quickly.
 
 The endpoint list (`src/console/endpoints.json`) is generated from
 [Okta's spec](https://github.com/okta/okta-management-openapi-spec): run `npm run endpoints` to
