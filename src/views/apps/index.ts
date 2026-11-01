@@ -42,8 +42,8 @@ export const appsProvider: ViewProvider = {
         // Okta's Edit link sits in a link bar right after the heading.
         addActions: () => {
           const bar = createActions('div', 'link-bar hdr-layout clearfix');
-          // Level with where the Edit link's text would be (it has 6px of padding).
-          bar.style.paddingTop = '7px';
+          // Level with where the Edit link's text would be (it has 6px 12px of padding).
+          Object.assign(bar.style, { paddingTop: '3px', marginRight: '15px' });
           anchor.after(bar);
           return bar;
         },

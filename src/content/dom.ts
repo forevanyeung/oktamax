@@ -272,8 +272,13 @@ export function placeViewControl(
     neighbour.after(button);
   } else if (actions) {
     // Alone in the actions area: right-aligned, without leaving room for the Delete icon
-    // read-only admins don't get. Works in block, table-cell and flex containers alike.
-    Object.assign(button.style, { display: 'flex', width: 'fit-content', margin: '0 0 0 auto' });
+    // read-only admins don't get, where a lone pencil would be (Okta's has 6px 12px of padding).
+    // Works in block, table-cell and flex containers alike.
+    Object.assign(button.style, {
+      display: 'flex',
+      width: 'fit-content',
+      margin: '4px 9px 0 auto',
+    });
     actions.append(button);
   } else {
     // Never inside a link or button.
