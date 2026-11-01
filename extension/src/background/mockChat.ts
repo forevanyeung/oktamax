@@ -93,13 +93,30 @@ function reply(question: string, page: PageContext | undefined): Reply {
     const app = APPS.find((a) => page?.objectIds.includes(a.id)) ?? APPS[0]!;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const path = `/api/v1/logs?filter=eventType eq "user.authentication.sso" and target.id eq "${app.id}"&since=${today.toISOString()}`;
+    const filter = `eventType eq "user.authentication.sso" and target.id eq "${app.id}"`;
+    const lookup = { tool: 'list_applications', input: { q: app.label }, output: [app] };
+    // Like the real model: the System Log page, unless they ask for the API.
+    if (/\bapi\b/i.test(question)) {
+      return {
+        lookups: [
+          lookup,
+          pageTool(
+            OPEN_IN_API_CONSOLE,
+            `/api/v1/logs?filter=${filter}&since=${today.toISOString()}`,
+          ),
+        ],
+        text: `I opened today's sign-ins to **${app.label}** in the API console below: single sign-on events since midnight, newest last. Use **Table** to see one row per sign-in, or **Export CSV** to download them.`,
+      };
+    }
     return {
       lookups: [
-        { tool: 'list_applications', input: { q: app.label }, output: [app] },
-        pageTool(OPEN_IN_API_CONSOLE, path),
+        lookup,
+        pageTool(
+          NAVIGATE,
+          `/report/system_log_2?search=${encodeURIComponent(filter)}&fromTime=${encodeURIComponent(today.toISOString())}`,
+        ),
       ],
-      text: `I opened today's sign-ins to **${app.label}** in the API console below: single sign-on events since midnight, newest last. Use **Table** to see one row per sign-in, or **Export CSV** to download them.`,
+      text: `Here are today's sign-ins to **${app.label}** in the System Log: single sign-on events since midnight.`,
     };
   }
   if (/\b(go|take me|navigate|bring me)\b/i.test(question)) {
@@ -154,7 +171,7 @@ function reply(question: string, page: PageContext | undefined): Reply {
     text: [
       ...where.filter(Boolean),
       '',
-      "This is the **dev mock**: there's no chat server, so replies are canned. Try asking about *locked out* users, apps without *MFA*, to bring up today's *sign-ins*, to *go to* the groups page, for a *long* answer, or for an *error*.",
+      "This is the **dev mock**: there's no chat server, so replies are canned. Try asking about *locked out* users, apps without *MFA*, to bring up today's *sign-ins* (or the same in the *API* console), to *go to* the groups page, for a *long* answer, or for an *error*.",
     ].join('\n'),
   };
 }
