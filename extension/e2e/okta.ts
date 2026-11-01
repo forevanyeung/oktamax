@@ -15,7 +15,7 @@ import { resolve } from 'node:path';
 
 import { chromium, type BrowserContext, type Page } from 'playwright';
 
-process.loadEnvFile(resolve(import.meta.dirname, '../.env'));
+process.loadEnvFile(resolve(import.meta.dirname, '../../.env'));
 
 export type Account = 'admin' | 'read';
 
@@ -125,7 +125,11 @@ async function answerSignInWidget(page: Page, account: Account, done: () => bool
         await page.screenshot({ path: resolve(screenshots, `signin-${account}-stuck.png`) });
         throw new Error(`Unrecognised sign-in step: "${heading.trim()}"`);
       }
-      await google.first().click();
+      // The widget can move on mid-click and detach the button; the next loop sees where it went.
+      await google
+        .first()
+        .click({ timeout: 5_000 })
+        .catch(() => {});
       continue;
     }
 
