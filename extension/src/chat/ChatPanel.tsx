@@ -9,13 +9,12 @@ import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { useAISDKRuntime } from '@assistant-ui/react-ai-sdk';
 import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 
-import type { AuthStatus } from '../background/messages';
 import { useDrawerInset } from '../console/inset';
 import { loadSettings, onSettingsChanged } from '../settings';
 import { useChatState } from './chatState';
 import { CHAT_CSS } from './styles';
 import { Thread } from './Thread';
-import { isAdminConsoleOf, useAuth } from './useAuth';
+import { isAdminConsoleOf, useAuth, type ChatStatus } from './useAuth';
 import { useChatHistory, useOktaChat, type OktaChatMessage } from './useOktaChat';
 
 // Keep typing in the chat from triggering the admin console's keyboard shortcuts.
@@ -159,11 +158,26 @@ const Notice = ({
   onSignIn,
   onRetry,
 }: {
-  status: AuthStatus;
+  status: ChatStatus;
   onSignIn: () => void;
   onRetry: () => void;
 }) =>
-  status.state === 'unreachable' ? (
+  status.state === 'noWorker' ? (
+    <div className="chat-notice">
+      <p>
+        <strong>The assistant can’t start.</strong> The extension’s service worker isn’t answering,
+        usually because it failed to load.
+      </p>
+      <p>
+        Open <code>chrome://extensions</code>, check Okta Max for errors, and reload it. With a dev
+        build, the dev server (<code>npm run dev:extension</code>) has to be running.
+      </p>
+      <p className="chat-note">{status.error}</p>
+      <button type="button" className="chat-button" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  ) : status.state === 'unreachable' ? (
     <div className="chat-notice">
       <p>
         <strong>The assistant isn’t set up yet.</strong> It needs a chat server, and there’s none at{' '}
