@@ -32,6 +32,20 @@ function usePageContext(active: boolean): PageContext {
   return useMemo(() => pageContext(new URL(href)), [href]);
 }
 
+const CloseIcon = () => (
+  <svg
+    viewBox="0 0 16 16"
+    width="14"
+    height="14"
+    aria-hidden
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.6"
+  >
+    <path d="M3 3l10 10M13 3L3 13" />
+  </svg>
+);
+
 const ExpandIcon = ({ maximized }: { maximized: boolean }) => (
   <svg
     viewBox="0 0 16 16"
@@ -506,7 +520,7 @@ export const ApiConsole = () => {
                 aria-label="Close console"
                 onClick={() => update({ open: false })}
               >
-                ×
+                <CloseIcon />
               </button>
             </div>
           </div>

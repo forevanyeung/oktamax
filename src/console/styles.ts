@@ -65,8 +65,9 @@ export const consoleStyles = `
 .drawer .small:hover:not(:disabled) { background: var(--hover); }
 .drawer .small.primary { border-color: var(--blue); color: var(--blue); font-weight: 600; }
 .drawer .icon {
+  display: inline-flex; align-items: center; justify-content: center;
   width: 24px; height: 24px; padding: 0; border-radius: 6px;
-  font-size: 18px; line-height: 24px; color: var(--muted);
+  font-size: 18px; line-height: 1; color: var(--muted);
 }
 .drawer .icon:hover { background: var(--hover); color: var(--text); }
 
