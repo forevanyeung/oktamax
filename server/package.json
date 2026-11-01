@@ -13,6 +13,7 @@
     "build": "tsc --noEmit",
     "test": "vp test",
     "typecheck": "tsc --noEmit",
+    "create-okta-app": "vpx scripts/create-okta-app.ts",
     "verify:okta-mcp": "vpx scripts/verify-okta-mcp.ts"
   },
   "dependencies": {

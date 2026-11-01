@@ -228,7 +228,14 @@ providers or authorization servers, so the assistant can't answer questions abou
 
 #### 1. Okta OIDC app
 
-In the Okta org the admins use:
+In the Okta org the admins use, either run the script, which does steps 1–3 (and 4 with
+`--group`) and prints the `OKTA_CLIENT_ID`:
+
+```sh
+OKTA_API_TOKEN=... npm run create-okta-app -w @oktamax/server -- <extension-id> [--group "Okta Admins"]
+```
+
+It needs `OKTA_ORG_URL` (from `server/.env`) and an API token from a super admin. Or by hand:
 
 1. Create an **OIDC Native** (or SPA) app: Authorization Code with **PKCE**, no client secret.
 2. Sign-in redirect URI: `https://<extension-id>.chromiumapp.org/`. The extension ID is shown
