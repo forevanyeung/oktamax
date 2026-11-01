@@ -263,7 +263,6 @@ export const ApiConsole = () => {
   const [state, setState] = useState<ConsoleState>();
   const [result, setResult] = useState<Result>({ status: 'idle' });
   const [panel, setPanel] = useState<'params' | 'body'>();
-  const [showHistory, setShowHistory] = useState(true);
   const prompt = useRef<PromptHandle>(null);
   const responses = useRef(0);
 
@@ -443,58 +442,47 @@ export const ApiConsole = () => {
         onPointerDown={startResize}
         onDoubleClick={() => setMaximized(!state.maximized)}
       />
-      <header className="drawer-head">
-        <button
-          type="button"
-          className={showHistory ? 'small toggled' : 'small'}
-          aria-pressed={showHistory}
-          onClick={() => setShowHistory(!showHistory)}
-        >
-          History
-        </button>
-        <h2>API console</h2>
-        <span className="hint origin">{location.host}</span>
-        <div className="spacer" />
-        <span className="hint">Ctrl + ` to toggle</span>
-        <button
-          type="button"
-          className="icon"
-          title={state.maximized ? 'Restore console' : 'Expand console'}
-          aria-label={state.maximized ? 'Restore console' : 'Expand console'}
-          aria-pressed={state.maximized}
-          onClick={() => setMaximized(!state.maximized)}
-        >
-          <ExpandIcon maximized={state.maximized} />
-        </button>
-        <button
-          type="button"
-          className="icon close"
-          title="Close"
-          onClick={() => update({ open: false })}
-        >
-          ×
-        </button>
-      </header>
       <div className="drawer-main">
-        {showHistory && (
-          <HistoryList
-            history={state.history}
-            onLoad={(entry) => load(entry)}
-            onRun={(entry) => load(entry, true)}
-            onClear={() => update({ history: [] })}
-          />
-        )}
+        <HistoryList
+          history={state.history}
+          onLoad={(entry) => load(entry)}
+          onRun={(entry) => load(entry, true)}
+          onClear={() => update({ history: [] })}
+        />
         <div className="work">
-          <Prompt
-            ref={prompt}
-            draft={draft}
-            history={state.history}
-            context={context}
-            sending={sending}
-            onChange={setDraft}
-            onSend={() => void run(draft)}
-            onEscape={() => update({ open: false })}
-          />
+          <div className="prompt-row">
+            <Prompt
+              ref={prompt}
+              draft={draft}
+              history={state.history}
+              context={context}
+              sending={sending}
+              onChange={setDraft}
+              onSend={() => void run(draft)}
+              onEscape={() => update({ open: false })}
+            />
+            <div className="drawer-controls">
+              <span className="hint">Ctrl + ` to toggle</span>
+              <button
+                type="button"
+                className="icon"
+                title={state.maximized ? 'Restore console' : 'Expand console'}
+                aria-label={state.maximized ? 'Restore console' : 'Expand console'}
+                aria-pressed={state.maximized}
+                onClick={() => setMaximized(!state.maximized)}
+              >
+                <ExpandIcon maximized={state.maximized} />
+              </button>
+              <button
+                type="button"
+                className="icon close"
+                title="Close"
+                onClick={() => update({ open: false })}
+              >
+                ×
+              </button>
+            </div>
+          </div>
           <div className="request-tabs" role="tablist">
             {(
               [

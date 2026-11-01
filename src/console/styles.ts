@@ -51,13 +51,7 @@ export const consoleStyles = `
 }
 .grip:hover::after { background: var(--blue); }
 
-.drawer-head {
-  display: flex; align-items: center; gap: 12px; flex: none;
-  padding: 8px 12px; border-bottom: 1px solid var(--border);
-}
-.drawer-head h2 { margin: 0; font: 600 14px/20px ${BODY_FONT}; }
 .drawer .hint { margin: 0; color: var(--muted); }
-.origin { font-family: ${MONO_FONT}; font-size: 12px; }
 .spacer { flex: 1; }
 
 .drawer button { border: 0; background: none; cursor: pointer; }
@@ -69,7 +63,6 @@ export const consoleStyles = `
   font-size: 12px; line-height: 18px;
 }
 .drawer .small:hover:not(:disabled) { background: var(--hover); }
-.drawer .small.toggled { background: var(--raised); border-color: var(--muted); }
 .drawer .small.primary { border-color: var(--blue); color: var(--blue); font-weight: 600; }
 .drawer .icon {
   width: 24px; height: 24px; padding: 0; border-radius: 6px;
@@ -141,7 +134,10 @@ export const consoleStyles = `
 }
 :host([data-theme='dark']) .drawer .send { background: ${DARK.primary}; }
 
-.prompt-wrap { position: relative; flex: none; }
+.prompt-row { display: flex; flex: none; gap: 12px; align-items: center; }
+.prompt-wrap { position: relative; flex: 1; min-width: 0; }
+.drawer-controls { display: flex; flex: none; gap: 4px; align-items: center; }
+.drawer-controls .hint { margin-right: 8px; font-size: 12px; white-space: nowrap; }
 .suggestions {
   position: absolute; z-index: 2; top: calc(100% + 4px); left: 0; right: 0;
   max-height: min(320px, 60vh); margin: 0; padding: 4px 0; overflow: auto; list-style: none;
