@@ -6,11 +6,14 @@
  *   streaming the response back over a port. Only requests to the configured
  *   chat server get a token.
  * - In dev builds, answers them from a mock when no chat server is reachable.
+ * - With the on-device assistant, answers them itself (`localChat.ts`).
  */
 import type { ServerConfig } from '@oktamax/shared';
 
-import { loadSettings } from '../settings';
+import { onDeviceModel } from '../onDeviceModel';
+import { loadSettings, ON_DEVICE_CHAT_URL } from '../settings';
 import { clearAccessToken, getAccessToken } from './auth';
+import { createLocalChat } from './localChat';
 import {
   FETCH_PORT,
   type AuthStatus,
@@ -19,6 +22,7 @@ import {
   type WorkerRequest,
 } from './messages';
 import { mockChat } from './mockChat';
+import { prepareOktaMcp } from './oktaMcp';
 
 const configCache = new Map<string, Promise<ServerConfig>>();
 
@@ -29,7 +33,11 @@ async function fetchConfig(serverUrl: string): Promise<ServerConfig> {
 }
 
 async function serverConfig(): Promise<{ serverUrl: string; config: ServerConfig } | undefined> {
-  const { chatServerUrl } = await loadSettings();
+  const { chatServerUrl, assistant, oktaOrgUrl, oktaClientId } = await loadSettings();
+  if (assistant === 'onDevice') {
+    if (!oktaOrgUrl || !oktaClientId) return undefined;
+    return { serverUrl: ON_DEVICE_CHAT_URL, config: { oktaOrgUrl, oktaClientId } };
+  }
   if (!chatServerUrl) return undefined;
   let config = configCache.get(chatServerUrl);
   if (!config) {
@@ -51,9 +59,15 @@ async function authStatus(interactive: boolean): Promise<AuthStatus> {
   }
   if (!server) return { state: 'off' };
   const { oktaOrgUrl } = server.config;
+  const onDevice = server.serverUrl === ON_DEVICE_CHAT_URL;
+  if (onDevice) {
+    const availability = await onDeviceModel().availability();
+    if (availability !== 'available')
+      return { state: 'modelUnavailable', oktaOrgUrl, availability };
+  }
   try {
     await getAccessToken(server.config, interactive);
-    return { state: 'signedIn', oktaOrgUrl };
+    return { state: 'signedIn', oktaOrgUrl, onDevice };
   } catch (error) {
     return { state: 'signedOut', oktaOrgUrl, error: String(error) };
   }
@@ -64,6 +78,12 @@ chrome.runtime.onMessage.addListener((message: WorkerRequest, _sender, sendRespo
   else if (message.type === 'oktamax:signIn') void authStatus(true).then(sendResponse);
   else return false;
   return true; // respond asynchronously
+});
+
+const localChat = createLocalChat(async () => {
+  const server = await serverConfig();
+  if (!server) throw new Error('The on-device assistant is turned off');
+  return { config: server.config, token: await getAccessToken(server.config, false) };
 });
 
 /** The chat server's response to `request`, with the admin's token added. */
@@ -77,6 +97,11 @@ async function forward(request: BridgeRequest, signal: AbortSignal): Promise<Res
   }
   if (!server || new URL(request.url).origin !== new URL(server.serverUrl).origin) {
     throw new Error('Request is not for the configured chat server');
+  }
+  if (server.serverUrl === ON_DEVICE_CHAT_URL) {
+    // Like the chat server, start Okta's MCP server when the chat opens, before the first question.
+    void prepareOktaMcp(server.config).catch((error) => console.error('[okta-mcp]', error));
+    return localChat(request);
   }
 
   let token: string;

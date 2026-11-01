@@ -36,6 +36,10 @@ export default defineConfig(({ command }) => ({
   build: {
     // Everything ships inside the extension package, so large chunks don't cost network time.
     chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      // Not in the manifest: the service worker opens it with chrome.offscreen.
+      input: { offscreen: 'src/offscreen/index.html' },
+    },
   },
   test: {
     include: ['src/**/*.test.ts'],

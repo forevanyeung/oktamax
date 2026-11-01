@@ -299,6 +299,60 @@ Build and load the extension as in [Install](#install), then:
    While the server can't be reached, it appears on every admin console, and the panel says the
    assistant isn't set up yet.
 
+### On-device assistant (no server)
+
+The popup's **Assistant** switch has a second mode, **On-device**, that needs no chat server:
+
+```
+Admin console tab            Service worker                        Offscreen document
+┌──────────────────┐  port  ┌──────────────────────────────┐ port  ┌────────────────────────────┐
+│ chat panel       │───────▶│ the chat server's routes      │──────▶│ Pyodide (CPython on WASM)  │
+│ (unchanged)      │◀───────│ AI SDK + Gemini Nano          │◀──────│ okta-mcp-server, unmodified│──▶ Okta API
+└──────────────────┘        │ (Prompt API, @browser-ai/core)│  MCP  │ (fetch, the admin's token) │    (as the admin)
+                            └──────────────────────────────┘       └────────────────────────────┘
+```
+
+- **The model** is Chrome's built-in Gemini Nano (the Prompt API, stable for extensions since
+  Chrome 138), used through `@browser-ai/core`. Questions, page text and Okta data never leave the
+  browser. The popup has a **Download** button for the model, because Chrome only starts the download
+  on a click.
+- **Okta's MCP server** is the same `okta-mcp-server` 1.1.7, unmodified. It runs on Pyodide in an
+  offscreen document (`extension/src/offscreen/`). The differences from the hosted server are:
+  - There's no stdio in a browser, so the bridge feeds MCP JSON-RPC to the server over in-memory
+    streams.
+  - A keyring backend hands the server the token the service worker sends over the port.
+  - The Okta SDK's one HTTP method is replaced to use `fetch` instead of aiohttp.
+  - pycryptodomex and jwcrypto, used only for private-key sign-in, are stubbed.
+
+  The same read-only limits apply as on the server: read scopes only, `OKTA_SCOPES` limited to
+  them, and only `list_*`/`get_*` tools given to the model.
+
+- **Everything is bundled.** `npm run pyodide -w @oktamax/extension`, which the build runs when
+  `public/pyodide/` is missing, resolves the server's dependencies with micropip. It vendors
+  Pyodide and 59 wheels, about 26 MB, so nothing is downloaded at runtime: the Chrome Web Store
+  doesn't allow remote code. The extension's CSP adds `'wasm-unsafe-eval'` for that and nothing
+  else.
+- **Settings:** the org URL and the OIDC app's client ID go in the popup (the chat server normally
+  provides them). The app is the same one as in [Setup](#setup).
+
+What it costs:
+
+- **Context window.** Gemini Nano has about 6,000 tokens. Okta's 47 read tools take about 17,000,
+  so the whole set can't be offered at once. Each question first asks the model to pick at most two
+  tools from a one-line list, then answers with only those, using short descriptions.
+  - Tool results are cut to 4,000 characters, page text to 1,500, and history to the last 6
+    messages.
+  - Answers take at most 4 steps.
+- **Tool calls are emulated.** Native tool calling in the Prompt API is still behind a flag.
+  `@browser-ai/core` describes the tools in the system prompt and parses fenced JSON calls, one per
+  step. It's noticeably less reliable than Claude at multi-step lookups.
+- **Hardware.** Chrome on Windows, macOS 13+, Linux or ChromeOS (Chromebook Plus), 22 GB free disk,
+  and a GPU with more than 4 GB of VRAM (or 16 GB of RAM and 4 cores). The panel says when it can't
+  run.
+- **First question.** Loading Python and the server takes about 8 s, so the offscreen document
+  starts when the chat opens. After that a tool call takes tens of milliseconds plus Okta's response
+  time.
+
 ## How it works
 
 ```
@@ -390,7 +444,7 @@ example), add it to
 npm run check      # vp check: format + lint (whole workspace)
 npm run typecheck
 npm test           # unit tests + server integration tests
-npm run test:e2e   # builds the extension and runs both browser tests
+npm run test:e2e   # builds the extension and runs the browser tests
 ```
 
 The e2e test (`extension/e2e/smoke.ts`) needs Playwright's Chromium (`npx playwright install chromium`).
@@ -412,6 +466,11 @@ their history. Screenshots are saved to `extension/e2e/*.png`.
 - **`extension/e2e/chat.ts`** runs the real server in-process with a slow scripted model. It asks a
   question, navigates to another page mid-answer, and checks that the answer resumes and finishes,
   history survives a reload without duplicates, and the page context reached the server.
+- **`extension/e2e/onDevice.ts`** runs the on-device assistant, with no server. It uses the real
+  `okta-mcp-server` on Pyodide in the offscreen document, against a fake HTTPS Okta, with a scripted
+  stand-in for `LanguageModel` (Playwright's Chromium has no Gemini Nano). It checks that a question
+  picks a tool, the call goes through Python to Okta with the admin's token, the answer streams
+  into the panel, and every prompt fits Nano's context window.
 
 **`npm run verify:okta-mcp -w @oktamax/server`** checks the gateway against the **real**
 `okta-mcp-server` (it needs `uv`). It starts two admins' processes against a fake HTTPS Okta and

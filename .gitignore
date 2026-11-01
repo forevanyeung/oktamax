@@ -7,3 +7,4 @@ extension/e2e/.profiles
 extension/e2e/live
 *.zip
 __pycache__
+extension/public/pyodide

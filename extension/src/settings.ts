@@ -1,5 +1,8 @@
 export type Theme = 'light' | 'dark' | 'system';
 
+/** Where the assistant runs: the chat server, or in Chrome (Gemini Nano and Okta's MCP server on WebAssembly). */
+export type AssistantMode = 'server' | 'onDevice';
+
 export interface Settings {
   /** Show view buttons even where Okta shows an Edit button (handy for testing as a super admin). */
   alwaysShowViewButton: boolean;
@@ -9,6 +12,10 @@ export interface Settings {
   showApiConsole: boolean;
   /** Base URL of the chat server, e.g. https://oktamax.example.com. Empty disables the chat. */
   chatServerUrl: string;
+  assistant: AssistantMode;
+  /** On-device only (the chat server provides these otherwise): the org, and the OIDC app to sign in with. */
+  oktaOrgUrl: string;
+  oktaClientId: string;
 }
 
 const defaults: Settings = {
@@ -16,7 +23,20 @@ const defaults: Settings = {
   theme: 'system',
   showApiConsole: true,
   chatServerUrl: 'http://localhost:8787',
+  assistant: 'server',
+  oktaOrgUrl: '',
+  oktaClientId: '',
 };
+
+/**
+ * Stands in for the chat server's URL when the assistant runs on-device: the chat
+ * sends its requests here as usual, and the service worker answers them itself.
+ */
+export const ON_DEVICE_CHAT_URL = 'https://on-device.oktamax.invalid';
+
+/** The URL the chat sends its requests to; empty when the assistant is off. */
+export const chatUrl = (settings: Settings) =>
+  settings.assistant === 'onDevice' ? ON_DEVICE_CHAT_URL : settings.chatServerUrl;
 
 export const loadSettings = async (): Promise<Settings> =>
   ({ ...defaults, ...(await chrome.storage.sync.get(defaults)) }) as Settings;

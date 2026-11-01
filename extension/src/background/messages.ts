@@ -28,5 +28,7 @@ export type AuthStatus =
   | { state: 'unreachable'; serverUrl: string; error: string }
   /** Dev builds without a reachable chat server: replies come from `mockChat.ts`. */
   | { state: 'mock' }
+  /** On-device: Chrome's built-in model can't run here, or hasn't been downloaded yet. */
+  | { state: 'modelUnavailable'; oktaOrgUrl: string; availability: string }
   | { state: 'signedOut'; oktaOrgUrl: string; error?: string }
-  | { state: 'signedIn'; oktaOrgUrl: string };
+  | { state: 'signedIn'; oktaOrgUrl: string; onDevice?: boolean };
