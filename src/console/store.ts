@@ -18,7 +18,7 @@ export interface HistoryEntry {
 export interface ConsoleState {
   open: boolean;
   height: number;
-  /** Covering the whole page, rather than at `height`. */
+  /** As tall as it can be, rather than at `height`. */
   maximized: boolean;
   draft: ApiRequest;
   history: HistoryEntry[];

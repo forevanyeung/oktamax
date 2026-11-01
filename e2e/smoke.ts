@@ -293,14 +293,23 @@ async function main() {
   await userDrawer.getByRole('button', { name: /User\s*00u1/ }).waitFor();
 
   // Expand covers the page.
+  // Expand makes it as tall as dragging can, sliding up to it.
   await userDrawer.getByRole('button', { name: 'Expand console' }).click();
-  assert.equal(
-    await userDrawer.evaluate((el) => el.getBoundingClientRect().height),
-    page.viewportSize()?.height,
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-oktamax="host"]')
+      ?.shadowRoot?.querySelector('.drawer')
+      ?.getAnimations()
+      .every((a) => a.playState === 'finished'),
   );
+  const expanded = await userDrawer.evaluate((el) => el.getBoundingClientRect());
+  assert.equal(expanded.height, (page.viewportSize()?.height ?? 0) - 60);
+  assert.equal(expanded.bottom, page.viewportSize()?.height);
   await userPrompt.fill('/api/v1/users?');
   await page.screenshot({ path: join(import.meta.dirname, 'api-console-suggestions.png') });
   await userDrawer.getByRole('button', { name: 'Restore console' }).click();
+  await userDrawer.getByRole('button', { name: 'Expand console' }).waitFor();
+  assert.equal(await userDrawer.evaluate((el) => el.getBoundingClientRect().height), 420);
 
   await context.close();
   console.log('e2e smoke test passed');

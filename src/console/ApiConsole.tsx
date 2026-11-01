@@ -3,7 +3,7 @@
  * API with the admin's session: a prompt line (`GET /api/v1/users?limit=5`),
  * query parameters and a JSON body, the response, and a history of requests.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { loadSettings, onSettingsChanged } from '../settings';
 import { fillTemplate, LABELS, pageContext, placeholders, type PageContext } from './context';
@@ -51,8 +51,15 @@ const ExpandIcon = ({ maximized }: { maximized: boolean }) => (
 );
 
 const MIN_HEIGHT = 160;
+/** Leaves the top of the page in view, also when expanded. */
 const clampHeight = (height: number) =>
   Math.round(Math.max(MIN_HEIGHT, Math.min(height, innerHeight - 60)));
+const maxHeight = () => clampHeight(Infinity);
+
+// Expanding and restoring slide the drawer's top edge, like a sheet. Only its
+// transform is animated, so a large response isn't laid out again every frame.
+const SLIDE = { duration: 320, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' };
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ParamsEditor = ({ url, onChange }: { url: string; onChange: (url: string) => void }) => {
   const { path, params } = splitUrl(url);
@@ -284,6 +291,43 @@ export const ApiConsole = () => {
     setState((s) => s && { ...s, draft: { ...s.draft, ...change } });
   const context = usePageContext(!!state?.open && enabled);
 
+  const drawer = useRef<HTMLElement>(null);
+  // Growing: the height it grew from, to slide up from once it has grown.
+  const grownFrom = useRef<number>(undefined);
+  // Shrinking: the slide down, held at its end until the drawer has shrunk.
+  const shrinking = useRef<Animation>(undefined);
+
+  useLayoutEffect(() => {
+    shrinking.current?.cancel();
+    shrinking.current = undefined;
+    const el = drawer.current;
+    const from = grownFrom.current;
+    grownFrom.current = undefined;
+    if (!el || from === undefined) return;
+    el.animate(
+      [{ transform: `translateY(${el.offsetHeight - from}px)` }, { transform: 'none' }],
+      SLIDE,
+    );
+  }, [state?.maximized]);
+
+  const setMaximized = (maximized: boolean) => {
+    const el = drawer.current;
+    if (!state || !el || shrinking.current) return;
+    const from = el.offsetHeight;
+    const to = maximized ? maxHeight() : clampHeight(state.height);
+    if (to > from && !reducedMotion()) grownFrom.current = from;
+    if (to >= from || reducedMotion()) return update({ maximized });
+    const slide = el.animate([{ transform: 'none' }, { transform: `translateY(${from - to}px)` }], {
+      ...SLIDE,
+      fill: 'forwards',
+    });
+    shrinking.current = slide;
+    void slide.finished.then(
+      () => update({ maximized }),
+      () => {},
+    );
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === '`' && event.ctrlKey && enabledRef.current) {
@@ -350,10 +394,10 @@ export const ApiConsole = () => {
     const grip = event.currentTarget;
     grip.setPointerCapture(event.pointerId);
     const startY = event.clientY;
-    const startHeight = state.height;
+    const startHeight = drawer.current?.offsetHeight ?? state.height;
+    // Dragging an expanded drawer picks it up at its expanded height.
     const onMove = (e: PointerEvent) =>
-      update({ height: clampHeight(startHeight + startY - e.clientY) });
-    update({ maximized: false });
+      update({ height: clampHeight(startHeight + startY - e.clientY), maximized: false });
     const onUp = () => {
       grip.removeEventListener('pointermove', onMove);
       grip.removeEventListener('pointerup', onUp);
@@ -381,9 +425,10 @@ export const ApiConsole = () => {
 
   return (
     <section
+      ref={drawer}
       className="drawer"
       aria-label="API console"
-      style={{ height: state.maximized ? '100vh' : clampHeight(state.height) }}
+      style={{ height: state.maximized ? maxHeight() : clampHeight(state.height) }}
       // Keeps the console's keyboard shortcuts from seeing what's typed here.
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -396,7 +441,7 @@ export const ApiConsole = () => {
         aria-orientation="horizontal"
         title="Drag to resize, double-click to expand"
         onPointerDown={startResize}
-        onDoubleClick={() => update({ maximized: !state.maximized })}
+        onDoubleClick={() => setMaximized(!state.maximized)}
       />
       <header className="drawer-head">
         <button
@@ -417,7 +462,7 @@ export const ApiConsole = () => {
           title={state.maximized ? 'Restore console' : 'Expand console'}
           aria-label={state.maximized ? 'Restore console' : 'Expand console'}
           aria-pressed={state.maximized}
-          onClick={() => update({ maximized: !state.maximized })}
+          onClick={() => setMaximized(!state.maximized)}
         >
           <ExpandIcon maximized={state.maximized} />
         </button>
