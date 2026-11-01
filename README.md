@@ -238,11 +238,23 @@ OKTA_API_TOKEN=... npm run create-okta-app -w @oktamax/server -- <extension-id> 
 It needs `OKTA_ORG_URL` (from `server/.env`) and an API token from a super admin. Or by hand:
 
 1. Create an **OIDC Native** (or SPA) app: Authorization Code with **PKCE**, no client secret.
-2. Sign-in redirect URI: `https://<extension-id>.chromiumapp.org/`. The extension ID is shown
-   on `chrome://extensions`. To keep it stable across machines, add a `key` to
-   `extension/manifest.config.ts`.
+2. Sign-in redirect URIs, both:
+   - `https://<extension-id>.chromiumapp.org/`: where Chrome's sign-in window returns to the
+     extension (`chrome.identity.getRedirectURL()`); nothing is loaded from it.
+   - `chrome-extension://<extension-id>`: never redirected to, but Okta only accepts token
+     requests from a browser whose `Origin` is one of the app's redirect URIs. Without it,
+     sign-in fails with "Browser requests to the token endpoint must be part of at least one
+     whitelisted redirect_uri".
+
+   The extension ID is shown on `chrome://extensions`. To keep it stable across machines, add a
+   `key` to `extension/manifest.config.ts`.
+
 3. **Okta API Scopes** tab: grant the `okta.*.read` scopes listed in `OKTA_SCOPES`.
-4. Assign the app to your admins.
+4. Assign the app to your admins. Okta answers an unassigned admin with an error page, which
+   Chrome reports as "Authorization page could not be loaded".
+5. Give the app an authentication policy your admins' admin console sign-in satisfies. Otherwise
+   the extension's silent sign-in fails and admins are asked to sign in again. Okta doesn't let
+   other apps share the Admin Console's policy.
 
 #### 2. Server
 

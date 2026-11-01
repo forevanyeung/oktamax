@@ -34,7 +34,9 @@ export interface CreateOktaAppOptions {
 
 interface App {
   id: string;
+  name: string;
   label: string;
+  signOnMode: string;
   credentials: { oauthClient: { client_id: string } };
   settings: { oauthClient: { redirect_uris: string[] } };
 }
@@ -47,7 +49,12 @@ export async function createOktaApp(
   for (const id of extensionIds) {
     if (!/^[a-p]{32}$/.test(id)) throw new Error(`Not an extension ID: ${id}`);
   }
-  const redirectUris = extensionIds.map((id) => `https://${id}.chromiumapp.org/`);
+  const redirectUris = extensionIds.flatMap((id) => [
+    `https://${id}.chromiumapp.org/`,
+    // Never redirected to: Okta only takes token requests from a browser (the extension's
+    // service worker sends `Origin: chrome-extension://<id>`) whose origin is a redirect URI's.
+    `chrome-extension://${id}`,
+  ]);
 
   const existing = (await okta<App[]>('GET', `/api/v1/apps?q=${encodeURIComponent(LABEL)}`)).find(
     (app) => app.label === LABEL,
@@ -56,8 +63,19 @@ export async function createOktaApp(
     const current = existing.settings.oauthClient.redirect_uris;
     const missing = redirectUris.filter((uri) => !current.includes(uri));
     if (missing.length) {
-      existing.settings.oauthClient.redirect_uris = [...current, ...missing];
-      await okta('PUT', `/api/v1/apps/${existing.id}`, existing);
+      // Only the app's own fields: Okta refuses the whole object (links, embedded, ...) back.
+      await okta('PUT', `/api/v1/apps/${existing.id}`, {
+        name: existing.name,
+        label: existing.label,
+        signOnMode: existing.signOnMode,
+        credentials: existing.credentials,
+        settings: {
+          oauthClient: {
+            ...existing.settings.oauthClient,
+            redirect_uris: [...current, ...missing],
+          },
+        },
+      });
       console.log(`"${LABEL}" already exists (${existing.id}); added ${missing.join(', ')}`);
     } else {
       console.log(`"${LABEL}" already exists (${existing.id}); nothing changed.`);
