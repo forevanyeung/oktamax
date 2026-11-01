@@ -229,12 +229,16 @@ export function createActions(tag: string, className = ''): HTMLElement {
 
 /** An actions cell at the end of `row`, for tables Okta renders without one for read-only admins. */
 export function addActionsCell(row: Element): HTMLElement {
+  // Only as wide as the view icon, so the other columns keep the room.
   const cell = createActions('td');
+  cell.style.width = '1px';
   row.append(cell);
   // Keep the header as wide as the rows, like the empty header Okta gives its own actions column.
   const header = row.closest('table')?.querySelector('thead tr');
   if (header && header.children.length < row.children.length) {
-    header.append(createActions('th'));
+    const th = createActions('th');
+    th.style.width = '1px';
+    header.append(th);
   }
   return cell;
 }
