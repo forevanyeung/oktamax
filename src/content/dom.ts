@@ -132,13 +132,12 @@ export function findEditControl(scope: Element): Element | undefined {
   );
 }
 
-// 16px for menu items (Okta's icon-16 slot); 14px with a lighter stroke for buttons, like Okta's edit-16 pencil.
+// 16px for menu items (Okta's icon-16 slot); 15px for buttons, near Okta's 14px edit-16 pencil.
 const eyeIcon = (
   size: number,
-  stroke: number,
 ) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-  <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z" stroke="currentColor" stroke-width="${stroke}" stroke-linejoin="round"/>
-  <circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="${stroke}"/>
+  <path d="M1.5 12S5.5 4.5 12 4.5 22.5 12 22.5 12 18.5 19.5 12 19.5 1.5 12 1.5 12Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="2"/>
 </svg>`;
 
 export function createViewButton(
@@ -152,7 +151,7 @@ export function createViewButton(
   button.dataset.oktamaxKey = key;
   button.title = `${label} (read-only, added by Okta Max)`;
   button.setAttribute('aria-label', `${label} (read-only)`);
-  button.innerHTML = eyeIcon(14, 1.75);
+  button.innerHTML = eyeIcon(15);
   Object.assign(button.style, {
     display: 'inline-flex',
     // Okta's action cells can be fixed-width flex rows that would squeeze the icon away.
@@ -160,7 +159,7 @@ export function createViewButton(
     alignItems: 'center',
     verticalAlign: 'middle',
     margin: '0 0 0 8px',
-    padding: '4px',
+    padding: '3px',
     border: '0',
     borderRadius: '4px',
     background: 'transparent',
@@ -205,7 +204,7 @@ export function createViewMenuItem(
     link.style.position = 'relative';
     link.insertAdjacentHTML(
       'afterbegin',
-      `<span style="position: absolute; left: 12px; color: var(--oktamax-accent, #1662dd); line-height: 0">${eyeIcon(16, 2)}</span>`,
+      `<span style="position: absolute; left: 12px; color: var(--oktamax-accent, #1662dd); line-height: 0">${eyeIcon(16)}</span>`,
     );
   }
   if (link !== item) item.append(link);
@@ -268,14 +267,13 @@ export function placeViewControl(
   const actions = target.actions ?? (edit ? undefined : target.addActions?.());
   // Next to Okta's Edit control or (disabled) "Actions" menu, floated the same way.
   const neighbour = edit ?? actions?.querySelector(':scope > .dropdown');
-  if (neighbour || actions) {
-    // Take the same room as Okta's icon-only Edit link, 12px from its neighbours like Okta's own icons.
-    Object.assign(button.style, { padding: '6px 12px', margin: neighbour ? '0 0 0 12px' : '0' });
-  }
   if (neighbour) {
     button.style.float = getComputedStyle(neighbour).float;
     neighbour.after(button);
   } else if (actions) {
+    // Alone in the actions area: right-aligned, without leaving room for the Delete icon
+    // read-only admins don't get. Works in block, table-cell and flex containers alike.
+    Object.assign(button.style, { display: 'flex', width: 'fit-content', margin: '0 0 0 auto' });
     actions.append(button);
   } else {
     // Never inside a link or button.
