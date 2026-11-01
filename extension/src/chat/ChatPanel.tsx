@@ -7,8 +7,9 @@
  */
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { useAISDKRuntime } from '@assistant-ui/react-ai-sdk';
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 
+import { useDrawerInset } from '../console/inset';
 import { loadSettings, onSettingsChanged } from '../settings';
 import { useChatState } from './chatState';
 import { CHAT_CSS } from './styles';
@@ -18,6 +19,39 @@ import { useChatHistory, useOktaChat, type OktaChatMessage } from './useOktaChat
 
 // Keep typing in the chat from triggering the admin console's keyboard shortcuts.
 const isolateKeys = (event: KeyboardEvent) => event.stopPropagation();
+
+const GAP = 24;
+const MAX_HEIGHT = 640;
+/** Below this, the panel covers the API console instead of squeezing in above it. */
+const MIN_HEIGHT = 240;
+const LAUNCHER_HEIGHT = 44;
+
+/** Sits above the API console drawer when it's open and leaves room, else in the corner. */
+const usePlacement = () => {
+  const inset = useDrawerInset();
+  const above = (height: number) => inset > 0 && innerHeight - inset - GAP * 1.5 >= height;
+  const bottom = (height: number) => (above(height) ? inset + GAP / 2 : GAP);
+  const panelBottom = bottom(MIN_HEIGHT);
+  return {
+    launcher: { bottom: bottom(LAUNCHER_HEIGHT) } satisfies CSSProperties,
+    panel: {
+      bottom: panelBottom,
+      height: `min(${MAX_HEIGHT}px, calc(100vh - ${panelBottom + GAP}px))`,
+    } satisfies CSSProperties,
+  };
+};
+
+const ChatIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+    <path d="M2.5 3.5h11v7.5H8l-3 2.5V11H2.5z" strokeLinejoin="round" />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+    <path d="M3 3l8 8M11 3l-8 8" strokeLinecap="round" />
+  </svg>
+);
 
 const Conversation = ({
   serverUrl,
@@ -34,7 +68,7 @@ const Conversation = ({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       {chat.error && (
-        <div className="banner error">
+        <div className="chat-banner chat-failed" role="alert">
           {chat.error.message.includes('signin_required')
             ? 'Your session expired. Close and reopen the chat to sign in again.'
             : chat.error.message}
@@ -47,8 +81,13 @@ const Conversation = ({
 
 const ChatBody = ({ serverUrl, chatId }: { serverUrl: string; chatId: string }) => {
   const { messages, error } = useChatHistory(serverUrl, chatId);
-  if (error) return <div className="banner error">{error}</div>;
-  if (!messages) return <div className="banner">Loading…</div>;
+  if (error)
+    return (
+      <div className="chat-banner chat-failed" role="alert">
+        {error}
+      </div>
+    );
+  if (!messages) return <div className="chat-banner">Loading…</div>;
   return (
     <Conversation key={chatId} serverUrl={serverUrl} chatId={chatId} initialMessages={messages} />
   );
@@ -56,29 +95,41 @@ const ChatBody = ({ serverUrl, chatId }: { serverUrl: string; chatId: string }) 
 
 const Panel = ({
   children,
+  style,
   onClose,
   onNewChat,
 }: {
   children: ReactNode;
+  style: CSSProperties;
   onClose: () => void;
   onNewChat?: () => void;
 }) => (
   <section
-    className="panel"
+    className="chat-panel"
     role="dialog"
     aria-label="Okta assistant"
-    onKeyDown={isolateKeys}
+    style={style}
+    onKeyDown={(event) => {
+      isolateKeys(event);
+      if (event.key === 'Escape') onClose();
+    }}
     onKeyUp={isolateKeys}
   >
-    <header className="panel-header">
+    <header className="chat-header">
       <h2>Okta assistant</h2>
       {onNewChat && (
-        <button type="button" className="icon-button" onClick={onNewChat}>
+        <button type="button" className="chat-text-button" onClick={onNewChat}>
           New chat
         </button>
       )}
-      <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
-        ✕
+      <button
+        type="button"
+        className="chat-icon-button"
+        onClick={onClose}
+        aria-label="Close"
+        title="Close (Esc)"
+      >
+        <CloseIcon />
       </button>
     </header>
     {children}
@@ -98,33 +149,31 @@ export const ChatLauncher = () => {
   const serverUrl = useChatServerUrl();
   const { state, setOpen, startNewChat } = useChatState();
   const { status, signIn } = useAuth();
+  const placement = usePlacement();
 
   // Only on the admin console of the org the chat server serves.
   if (!serverUrl || !state || !status?.configured) return null;
   if (status.oktaOrgUrl && !isAdminConsoleOf(status.oktaOrgUrl)) return null;
 
   return (
-    <>
+    <div className="chat">
       <style>{CHAT_CSS}</style>
       {state.open ? (
         <Panel
+          style={placement.panel}
           onClose={() => setOpen(false)}
           onNewChat={status.signedIn ? startNewChat : undefined}
         >
           {status.signedIn ? (
             <ChatBody serverUrl={serverUrl} chatId={state.chatId} />
           ) : (
-            <div className="signin">
+            <div className="chat-signin">
               <p>
                 Sign in with Okta to use the assistant. It reads your org with your own, read-only
                 access.
               </p>
-              {status.error && <p className="muted">{status.error}</p>}
-              <button
-                type="button"
-                className="composer-button primary"
-                onClick={() => void signIn()}
-              >
+              {status.error && <p className="chat-note">{status.error}</p>}
+              <button type="button" className="chat-button primary" onClick={() => void signIn()}>
                 Sign in
               </button>
             </div>
@@ -133,13 +182,15 @@ export const ChatLauncher = () => {
       ) : (
         <button
           type="button"
-          className="launcher"
+          className="chat-launcher"
+          style={placement.launcher}
           onClick={() => setOpen(true)}
           aria-label="Open Okta assistant"
         >
+          <ChatIcon />
           Ask
         </button>
       )}
-    </>
+    </div>
   );
 };

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { loadSettings, onSettingsChanged } from '../settings';
 import { fillTemplate, LABELS, pageContext, placeholders, type PageContext } from './context';
 import { timeAgo } from './format';
+import { setDrawerInset } from './inset';
 import { Prompt, type PromptHandle } from './Prompt';
 import { joinUrl, send, splitUrl, type ApiRequest, type ApiResponse, type Param } from './request';
 import { ResponseView } from './ResponseView';
@@ -382,6 +383,18 @@ export const ApiConsole = () => {
   useEffect(() => {
     if (state?.open) prompt.current?.focus();
   }, [state?.open]);
+
+  const shown = !!state?.open && enabled;
+  useEffect(() => {
+    const el = drawer.current;
+    if (!shown || !el) return;
+    const observer = new ResizeObserver(() => setDrawerInset(el.offsetHeight));
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      setDrawerInset(0);
+    };
+  }, [shown]);
 
   const run = async (template: ApiRequest) => {
     if (!template.url.trim()) return;

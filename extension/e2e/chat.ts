@@ -81,7 +81,7 @@ async function main() {
 
   // Mid-answer, navigate to another page (a full page load).
   await panel.getByText('One user').waitFor();
-  const partial = await panel.locator('.message.assistant').innerText();
+  const partial = await panel.locator('.chat-message.assistant').innerText();
   assert.ok(!partial.includes('locked@example.com.'), 'still streaming when we navigate');
   await page.goto(`${ADMIN}/admin/apps/active`);
 
@@ -96,8 +96,8 @@ async function main() {
   await page.reload();
   const reloaded = page.getByRole('dialog', { name: 'Okta assistant' });
   await reloaded.getByText('locked@example.com.').waitFor();
-  assert.equal(await reloaded.locator('.message.user').count(), 1);
-  assert.equal(await reloaded.locator('.message.assistant').count(), 1);
+  assert.equal(await reloaded.locator('.chat-message.user').count(), 1);
+  assert.equal(await reloaded.locator('.chat-message.assistant').count(), 1);
 
   // --- The server saw the page the question was asked from ---------------------
   const chatId = await worker.evaluate(async () => {
@@ -107,6 +107,32 @@ async function main() {
   const saved = store.get(chatId)!;
   assert.equal(saved.messages[0]?.metadata?.page?.url, `${ADMIN}/admin/users`);
   assert.deepEqual(saved.messages[0]?.metadata?.page?.headings, ['People']);
+
+  // --- The panel moves up out of the way of the API console --------------------
+  const panelBottom = async () =>
+    (await reloaded.boundingBox())!.y + (await reloaded.boundingBox())!.height;
+  await page.getByRole('button', { name: /^API$/ }).click();
+  const drawer = page.getByRole('region', { name: 'API console' });
+  await drawer.waitFor();
+  const drawerTop = (await drawer.boundingBox())!.y;
+  await page.waitForFunction(
+    (top) =>
+      document
+        .querySelector('[data-oktamax="host"]')!
+        .shadowRoot!.querySelector('.chat-panel')!
+        .getBoundingClientRect().bottom <= top,
+    drawerTop,
+  );
+  assert.ok((await panelBottom()) <= drawerTop, 'chat sits above the open API console');
+  await page.screenshot({ path: join(import.meta.dirname, 'chat-api-console.png') });
+
+  // --- Dark mode ---------------------------------------------------------------
+  await worker.evaluate(() => chrome.storage.sync.set({ theme: 'dark' }));
+  await page.reload();
+  await reloaded.getByText('locked@example.com.').waitFor();
+  const background = await reloaded.evaluate((el) => getComputedStyle(el).backgroundColor);
+  assert.notEqual(background, 'rgb(255, 255, 255)', 'chat follows dark mode');
+  await page.screenshot({ path: join(import.meta.dirname, 'chat-dark.png') });
 
   await context.close();
   server.close();
