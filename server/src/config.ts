@@ -23,9 +23,19 @@ export const config = {
   oktaOrgUrl,
   /** Client ID of the OIDC app the extension signs in with (public client, PKCE). */
   oktaClientId: required('OKTA_CLIENT_ID'),
-  awsRegion: process.env.AWS_REGION ?? 'us-east-1',
-  /** Bedrock model or inference profile ID. */
-  bedrockModelId: process.env.BEDROCK_MODEL_ID ?? 'us.anthropic.claude-opus-5-5',
+  /** Which model to use: Anthropic's API if there's an API key, otherwise Bedrock. */
+  model: process.env.ANTHROPIC_API_KEY
+    ? {
+        provider: 'anthropic' as const,
+        apiKey: process.env.ANTHROPIC_API_KEY,
+        modelId: process.env.ANTHROPIC_MODEL_ID ?? 'claude-opus-5-5',
+      }
+    : {
+        provider: 'bedrock' as const,
+        region: process.env.AWS_REGION ?? 'us-east-1',
+        /** Bedrock model or inference profile ID. */
+        modelId: process.env.BEDROCK_MODEL_ID ?? 'us.anthropic.claude-opus-5-5',
+      },
   /** How to start Okta's MCP server (stdio). Pinned, since we rely on its keyring/scope behaviour. */
   oktaMcp: {
     command: process.env.OKTA_MCP_COMMAND ?? 'uvx',

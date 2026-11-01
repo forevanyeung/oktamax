@@ -15,14 +15,14 @@ policy details) don't get one.
   (see below). It's the only part of the extension that can send something other than `GET`.
 - The views and the API console use the admin's existing session. No tokens.
 - The UI is rendered in a shadow DOM, so it can't break the admin console's styles (or the reverse).
-- An optional **assistant** (see below): a chat panel backed by Claude on Amazon Bedrock and Okta's
+- An optional **assistant** (see below): a chat panel backed by Claude (on Amazon Bedrock or Anthropic's API) and Okta's
   own [MCP server](https://github.com/okta/okta-mcp-server), hosted for many admins and limited to
   read-only tools. It knows which page you're on, and keeps going when you navigate. It's the only
   part that needs a server.
 
 ```
 extension/   Chrome extension (Vite+ · CRXJS · React · assistant-ui)
-server/      Chat API + multi-user gateway to Okta's MCP server (Hono · Vercel AI SDK · Bedrock · MCP SDK)
+server/      Chat API + multi-user gateway to Okta's MCP server (Hono · Vercel AI SDK · Bedrock/Anthropic · MCP SDK)
 shared/      Types shared by both (page context, chat API, OAuth scopes)
 ```
 
@@ -183,7 +183,8 @@ Admin console tab                     Service worker              Server        
   it reads page text and log data, which others can influence, so that would let them steer an
   admin's clicks.
 
-> Page text, tool results and questions are sent to Bedrock in your AWS account. They can include
+> Page text, tool results and questions are sent to the model: Bedrock in your AWS account, or
+> Anthropic's API if you use an API key. They can include
 > user names and emails from the pages and API responses. Make sure that's acceptable before
 > rolling this out.
 
@@ -239,7 +240,7 @@ In the Okta org the admins use:
 #### 2. Server
 
 ```sh
-cp server/.env.example server/.env   # OKTA_ORG_URL, OKTA_CLIENT_ID, AWS_REGION, BEDROCK_MODEL_ID
+cp server/.env.example server/.env   # OKTA_ORG_URL, OKTA_CLIENT_ID, and a model (below)
 npm install
 npm run dev                          # the server: http://localhost:8787 (needs `uv` on PATH for okta-mcp-server)
 ```
@@ -252,10 +253,12 @@ docker build -f server/Dockerfile -t oktamax-server .
 docker run -p 8787:8787 --env-file server/.env oktamax-server
 ```
 
-- AWS credentials come from the standard chain (env vars, SSO profile, or an instance/task role).
-  They need `bedrock:InvokeModelWithResponseStream` on the model.
-- `BEDROCK_MODEL_ID` defaults to Claude Opus 5.5 (`us.anthropic.claude-opus-5-5`, a US cross-region
-  inference profile). Use the ID your account has access to.
+- **Model.** Set `ANTHROPIC_API_KEY` to use Anthropic's API directly (`ANTHROPIC_MODEL_ID`
+  defaults to `claude-opus-5-5`). Without it, the server uses Bedrock:
+  - AWS credentials come from the standard chain (env vars, SSO profile, or an instance/task
+    role). They need `bedrock:InvokeModelWithResponseStream` on the model.
+  - `BEDROCK_MODEL_ID` defaults to Claude Opus 5.5 (`us.anthropic.claude-opus-5-5`, a US
+    cross-region inference profile). Use the ID your account has access to.
 - **Chat history and in-flight streams are kept in memory.** That suits a single instance. To run
   more than one, implement `ChatStore` on a database and swap `StreamBuffer` for
   `resumable-stream` on Redis; the routes stay the same.
@@ -427,7 +430,7 @@ password and TOTP code.
   visible heading.
 - Authenticator settings and OIN app-specific settings vary per integration, so they are shown
   generically (humanized keys) rather than with Okta's exact labels.
-- **The assistant is untested against a live tenant and Bedrock**; its tests use fakes for both,
+- **The assistant is untested against a live tenant and a real model**; its tests use fakes for both,
   and the Okta scope names your org accepts may need adjusting.
 - **`okta-mcp-server` is pinned to 1.1.7.** The gateway depends on two of its internals: it reads
   the token from the keyring on every call, and it picks tools from `OKTA_SCOPES` at startup. Run

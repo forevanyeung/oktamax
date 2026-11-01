@@ -1,4 +1,5 @@
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import { serve } from '@hono/node-server';
 
@@ -7,11 +8,14 @@ import { MemoryChatStore } from './chat/store';
 import { config } from './config';
 import { OktaMcpProcessPool } from './mcp/processPool';
 
-const bedrock = createAmazonBedrock({
-  region: config.awsRegion,
-  // Full AWS credential chain: env vars, SSO/profiles, ECS/EC2 roles.
-  credentialProvider: fromNodeProviderChain(),
-});
+const model =
+  config.model.provider === 'anthropic'
+    ? createAnthropic({ apiKey: config.model.apiKey })(config.model.modelId)
+    : createAmazonBedrock({
+        region: config.model.region,
+        // Full AWS credential chain: env vars, SSO/profiles, ECS/EC2 roles.
+        credentialProvider: fromNodeProviderChain(),
+      })(config.model.modelId);
 
 const oktaMcp = new OktaMcpProcessPool({
   ...config.oktaMcp,
@@ -21,7 +25,7 @@ const oktaMcp = new OktaMcpProcessPool({
 
 const app = createApp({
   oktaMcp,
-  model: bedrock(config.bedrockModelId),
+  model,
   store: new MemoryChatStore(),
   mcpUrl: config.mcpUrl,
 });
@@ -29,7 +33,9 @@ const app = createApp({
 const server = serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
   console.log(`oktamax server listening on http://localhost:${port}`);
   console.log(`  Okta org:  ${config.oktaOrgUrl}`);
-  console.log(`  Model:     ${config.bedrockModelId} (${config.awsRegion})`);
+  const where =
+    config.model.provider === 'anthropic' ? 'Anthropic API' : `Bedrock, ${config.model.region}`;
+  console.log(`  Model:     ${config.model.modelId} (${where})`);
   console.log(`  Okta MCP:  ${config.oktaMcp.command} ${config.oktaMcp.args.join(' ')}`);
 });
 
