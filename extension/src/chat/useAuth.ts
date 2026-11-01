@@ -5,12 +5,22 @@ import type { AuthStatus, WorkerRequest } from '../background/messages';
 /** The worker's status, or `noWorker` when the service worker didn't answer (it failed to start). */
 export type ChatStatus = AuthStatus | { state: 'noWorker'; error: string };
 
-const ask = async (request: WorkerRequest): Promise<ChatStatus> => {
+/** A worker that failed to load leaves messages unanswered rather than failing them. */
+const STATUS_TIMEOUT_MS = 5_000;
+
+const ask = async (request: WorkerRequest, timeoutMs?: number): Promise<ChatStatus> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const status = await chrome.runtime.sendMessage<WorkerRequest, AuthStatus | undefined>(request);
+    const answer = chrome.runtime.sendMessage<WorkerRequest, AuthStatus | undefined>(request);
+    const timeout = new Promise<undefined>((resolve) => {
+      if (timeoutMs) timer = setTimeout(resolve, timeoutMs);
+    });
+    const status = await Promise.race([answer, timeout]);
     return status ?? { state: 'noWorker', error: 'No answer from the service worker.' };
   } catch (error) {
     return { state: 'noWorker', error: String(error) };
+  } finally {
+    clearTimeout(timer);
   }
 };
 
@@ -21,7 +31,10 @@ const ask = async (request: WorkerRequest): Promise<ChatStatus> => {
 export function useAuth(serverUrl: string | undefined) {
   const [status, setStatus] = useState<ChatStatus>();
 
-  const refresh = useCallback(() => void ask({ type: 'oktamax:authStatus' }).then(setStatus), []);
+  const refresh = useCallback(
+    () => void ask({ type: 'oktamax:authStatus' }, STATUS_TIMEOUT_MS).then(setStatus),
+    [],
+  );
   useEffect(() => {
     if (serverUrl !== undefined) refresh();
   }, [refresh, serverUrl]);
