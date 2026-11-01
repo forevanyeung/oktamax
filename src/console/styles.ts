@@ -137,7 +137,6 @@ export const consoleStyles = `
 .prompt-row { display: flex; flex: none; gap: 12px; align-items: center; }
 .prompt-wrap { position: relative; flex: 1; min-width: 0; }
 .drawer-controls { display: flex; flex: none; gap: 4px; align-items: center; }
-.drawer-controls .hint { margin-right: 8px; font-size: 12px; white-space: nowrap; }
 .suggestions {
   position: absolute; z-index: 2; top: calc(100% + 4px); left: 0; right: 0;
   max-height: min(320px, 60vh); margin: 0; padding: 4px 0; overflow: auto; list-style: none;

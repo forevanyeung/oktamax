@@ -489,7 +489,6 @@ export const ApiConsole = () => {
               onEscape={() => update({ open: false })}
             />
             <div className="drawer-controls">
-              <span className="hint">Ctrl + ` to toggle, twice to expand</span>
               <button
                 type="button"
                 className="icon"
@@ -503,7 +502,8 @@ export const ApiConsole = () => {
               <button
                 type="button"
                 className="icon close"
-                title="Close"
+                title="Close (Ctrl + `)"
+                aria-label="Close console"
                 onClick={() => update({ open: false })}
               >
                 ×
