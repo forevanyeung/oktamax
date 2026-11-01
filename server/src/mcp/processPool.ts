@@ -116,9 +116,10 @@ export class OktaMcpProcessPool {
    */
   async warmUp(): Promise<number> {
     const started = Date.now();
-    // okta-mcp-server only reads `exp` from the token at startup, and calls no Okta API here.
+    // okta-mcp-server only decodes the token's `exp` at startup (PyJWT, unverified), and calls
+    // no Okta API here. An unexpired, unsigned JWT; anything it can't decode makes it sign in itself.
     const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
-    const token = `${b64({ alg: 'none' })}.${b64({ exp: Math.floor(started / 1000) + 3600 })}.warm-up`;
+    const token = `${b64({ alg: 'none' })}.${b64({ exp: Math.floor(started / 1000) + 3600 })}.`;
     const id = '#warm-up'; // can't collide with an Okta user ID
     const session = await this.start(id, this.options.allowedScopes.join(' '), token);
     try {
@@ -154,12 +155,9 @@ export class OktaMcpProcessPool {
         OKTAMAX_TOKEN_FILE: tokenFile,
       },
     });
-    // Kept to explain a process that exits before it answers.
-    let stderr = '';
-    transport.stderr?.on('data', (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-2000);
-      console.error(`[okta-mcp ${userId}] ${chunk.toString().trimEnd()}`);
-    });
+    transport.stderr?.on('data', (chunk: Buffer) =>
+      console.error(`[okta-mcp ${userId}] ${chunk.toString().trimEnd()}`),
+    );
 
     const client = new Client({ name: 'oktamax-gateway', version: '0.1.0' });
     transport.onclose = () => {
@@ -179,8 +177,7 @@ export class OktaMcpProcessPool {
                 `${this.options.command} not found: install uv, or set OKTA_MCP_COMMAND`,
               );
             }
-            const output = stderr.trim();
-            throw new Error(`${error.message}${output ? `. Its output:\n${output}` : ''}`);
+            throw new Error(`${error.message} (see the [okta-mcp ${userId}] lines in the log)`);
           },
         ),
       home,
