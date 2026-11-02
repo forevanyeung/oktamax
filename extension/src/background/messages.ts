@@ -20,6 +20,9 @@ export type BridgeResponse =
 /** One-off requests via `chrome.runtime.sendMessage`. */
 export type WorkerRequest = { type: 'oktamax:signIn' } | { type: 'oktamax:authStatus' };
 
+/** Worker → content script, via `chrome.tabs.sendMessage`: an Okta API GET for the on-device assistant (`content/oktaGet.ts`). */
+export type TabRequest = { type: 'oktamax:oktaGet'; path: string };
+
 /** What the chat can do. The org URL is the Okta org the chat server serves; the chat only appears on that org's admin console. */
 export type AuthStatus =
   /** No chat server URL: the assistant is turned off. */
@@ -32,3 +35,10 @@ export type AuthStatus =
   | { state: 'modelUnavailable'; oktaOrgUrl: string; availability: string }
   | { state: 'signedOut'; oktaOrgUrl: string; error?: string }
   | { state: 'signedIn'; oktaOrgUrl: string; onDevice?: boolean };
+
+/** The admin console tab an on-device chat is on, which sends its Okta requests, and its org. */
+export interface AdminTab {
+  tabId: number;
+  /** https://acme.okta.com for a tab on https://acme-admin.okta.com. */
+  oktaOrgUrl: string;
+}

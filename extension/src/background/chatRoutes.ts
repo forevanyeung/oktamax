@@ -13,16 +13,20 @@ import type { BridgeRequest } from './messages';
 
 export type Message = UIMessage<ChatMessageMetadata>;
 
-/** Starts a reply to the last of `messages`; calls `save` with the final messages when it ends. */
-export type StartReply = (
+/**
+ * Starts a reply to the last of `messages`; calls `save` with the final messages when it ends.
+ * `context` is whatever the caller passes along with the request.
+ */
+export type StartReply<Context = void> = (
   messages: Message[],
   save: (messages: Message[]) => Promise<void>,
+  context: Context,
 ) => StreamBuffer;
 
 const sse = (stream: ReadableStream<string>) =>
   new Response(stream.pipeThrough(new TextEncoderStream()), { headers: UI_MESSAGE_STREAM_HEADERS });
 
-export function serveChats(storageKey: string, start: StartReply) {
+export function serveChats<Context = void>(storageKey: string, start: StartReply<Context>) {
   const running = new Map<string, StreamBuffer>();
 
   const loadChats = async () =>
@@ -31,7 +35,7 @@ export function serveChats(storageKey: string, start: StartReply) {
   const saveChat = async (id: string, messages: Message[]) =>
     chrome.storage.local.set({ [storageKey]: { ...(await loadChats()), [id]: messages } });
 
-  return async (request: BridgeRequest): Promise<Response> => {
+  return async (request: BridgeRequest, context: Context): Promise<Response> => {
     const match = /^\/api\/chats\/([^/]+)(\/messages|\/stream|\/stop)?$/.exec(
       new URL(request.url).pathname,
     );
@@ -49,10 +53,14 @@ export function serveChats(storageKey: string, start: StartReply) {
       const { message } = JSON.parse(request.body ?? '{}') as SendMessageBody<Message>;
       const messages = [...((await loadChats())[chatId] ?? []), message];
       await saveChat(chatId, messages);
-      const buffer = start(messages, async (final) => {
-        await saveChat(chatId, final);
-        running.delete(chatId);
-      });
+      const buffer = start(
+        messages,
+        async (final) => {
+          await saveChat(chatId, final);
+          running.delete(chatId);
+        },
+        context,
+      );
       running.set(chatId, buffer);
       return sse(buffer.replay());
     }

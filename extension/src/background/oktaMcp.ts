@@ -1,11 +1,14 @@
 /**
  * Okta's MCP server for the on-device assistant: an MCP client in the service
  * worker, connected to okta-mcp-server running on Pyodide in an offscreen
- * document (`src/offscreen/`).
+ * document (`src/offscreen/`). The server's Okta requests are sent by the admin
+ * console tab the chat is on, with the admin's session (`content/oktaGet.ts`).
  *
- * The same read-only limits as the chat server's gateway apply: the token only
- * has read scopes, OKTA_SCOPES is limited to them so the server drops its write
- * tools, and only `list_*`/`get_*` tools are handed to the model.
+ * The session has the admin's full rights, so the server is kept to reading at
+ * every step: OKTA_SCOPES only has read scopes, so it drops its write tools;
+ * only `list_*`/`get_*` tools are handed to the model (as on the chat server's
+ * gateway); only GETs to the tab's org are passed on; and the tab only sends
+ * GETs, without the XSRF token Okta wants for changes.
  */
 import {
   createMCPClient,
@@ -21,8 +24,10 @@ import {
   type McpPortRequest,
   type McpPortResponse,
   type OktaMcpEnv,
+  type OktaRequest,
+  type OktaResponse,
 } from '../offscreen/messages';
-import type { AuthConfig } from './auth';
+import type { AdminTab, TabRequest } from './messages';
 
 /** Same rule as the chat server's gateway (`server/src/mcp/gateway.ts`). */
 export const isReadOnlyTool = (name: string) =>
@@ -50,8 +55,29 @@ let opening = Promise.resolve();
 const ensureOffscreen = (env: OktaMcpEnv) =>
   (opening = opening.catch(() => undefined).then(() => openOffscreen(env)));
 
-/** An MCP transport over a port to the offscreen document; the token goes first. */
-function portTransport(token: string): MCPTransport {
+/** Has `tab` send the server's request, if it's a GET to the tab's org. */
+async function sendFromTab(tab: AdminTab, request: OktaRequest): Promise<OktaResponse> {
+  const url = new URL(request.url);
+  const org = new URL(tab.oktaOrgUrl);
+  // The SDK builds URLs on the org; the next page's link is on the admin console.
+  const hosts = [org.host, org.host.replace(/^([^.]+)/, '$1-admin')];
+  if (request.method !== 'GET' || !hosts.includes(url.host)) {
+    return { error: `Only reads from ${org.origin} are allowed (${request.method} ${url.origin})` };
+  }
+  try {
+    const response = await chrome.tabs.sendMessage<TabRequest, OktaResponse | undefined>(
+      tab.tabId,
+      { type: 'oktamax:oktaGet', path: url.pathname + url.search },
+      { frameId: 0 },
+    );
+    return response ?? { error: "The admin console tab didn't answer" };
+  } catch (error) {
+    return { error: `The admin console tab is gone: ${String(error)}` };
+  }
+}
+
+/** An MCP transport over a port to the offscreen document; `tab` sends the server's Okta requests. */
+function portTransport(tab: AdminTab): MCPTransport {
   let port: chrome.runtime.Port | undefined;
   const transport: MCPTransport = {
     async start() {
@@ -59,13 +85,20 @@ function portTransport(token: string): MCPTransport {
       port.onMessage.addListener((message: McpPortResponse) => {
         if (message.type === 'message') {
           transport.onmessage?.(JSON.parse(message.json) as JSONRPCMessage);
+        } else if (message.type === 'oktaRequest') {
+          void sendFromTab(tab, message.request).then((response) =>
+            port?.postMessage({
+              type: 'oktaResponse',
+              id: message.id,
+              response,
+            } satisfies McpPortRequest),
+          );
         } else transport.onerror?.(new Error(message.message));
       });
       port.onDisconnect.addListener(() => {
         port = undefined;
         transport.onclose?.();
       });
-      port.postMessage({ type: 'token', token } satisfies McpPortRequest);
     },
     async send(message) {
       if (!port) throw new Error("Okta's MCP server isn't connected");
@@ -80,17 +113,16 @@ function portTransport(token: string): MCPTransport {
   return transport;
 }
 
-const mcpEnv = (config: AuthConfig): OktaMcpEnv => ({
-  OKTA_ORG_URL: config.oktaOrgUrl,
-  OKTA_CLIENT_ID: config.oktaClientId,
+const mcpEnv = (oktaOrgUrl: string): OktaMcpEnv => ({
+  OKTA_ORG_URL: oktaOrgUrl,
   OKTA_SCOPES: OKTA_SCOPES.filter((s) => s !== 'openid').join(' '),
 });
 
-/** Starts Okta's MCP server early, so Python has loaded by the first question. */
-export const prepareOktaMcp = (config: AuthConfig) => ensureOffscreen(mcpEnv(config));
+/** Starts Okta's MCP server for an org early, so Python has loaded by the first question. */
+export const prepareOktaMcp = (oktaOrgUrl: string) => ensureOffscreen(mcpEnv(oktaOrgUrl));
 
-/** An MCP client for this admin's Okta MCP server, started if it isn't running. */
-export async function connectOktaMcp(config: AuthConfig, token: string): Promise<MCPClient> {
-  await ensureOffscreen(mcpEnv(config));
-  return createMCPClient({ transport: portTransport(token) });
+/** An MCP client for Okta's MCP server, started for the tab's org if it isn't running. */
+export async function connectOktaMcp(tab: AdminTab): Promise<MCPClient> {
+  await ensureOffscreen(mcpEnv(tab.oktaOrgUrl));
+  return createMCPClient({ transport: portTransport(tab) });
 }

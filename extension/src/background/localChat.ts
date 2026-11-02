@@ -1,8 +1,9 @@
 /**
  * The on-device assistant: the chat server's routes (`chatRoutes.ts`), answered
  * by Chrome's built-in model (Gemini Nano, through the Prompt API) with Okta's
- * MCP server running on Pyodide (`oktaMcp.ts`). Nothing leaves the browser
- * except the Okta API calls themselves.
+ * MCP server running on Pyodide (`oktaMcp.ts`), which reads the org through the
+ * admin console tab the chat is on. Nothing leaves the browser except those
+ * Okta API calls, and there's nothing to set up: no server, no OIDC app.
  *
  * Gemini Nano has a context window of about 6,000 tokens, and Okta's read tools
  * alone take about 17,000. So each question first picks a couple of tools from
@@ -35,8 +36,8 @@ import {
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
 import { onDeviceModel } from '../onDeviceModel';
-import type { AuthConfig } from './auth';
 import { serveChats, type Message, type StartReply } from './chatRoutes';
+import type { AdminTab } from './messages';
 import { connectOktaMcp, isReadOnlyTool } from './oktaMcp';
 
 const MAX_TOOLS = 2;
@@ -158,14 +159,13 @@ async function pickTools(
   return output.tools.filter((name) => names.includes(name)).slice(0, MAX_TOOLS);
 }
 
-export function createLocalChat(getConfig: () => Promise<{ config: AuthConfig; token: string }>) {
-  const start: StartReply = (messages, save) => {
+export function createLocalChat() {
+  const start: StartReply<AdminTab> = (messages, save, tab) => {
     const abort = new AbortController();
     let mcp: MCPClient | undefined;
 
     const result = (async () => {
-      const { config, token } = await getConfig();
-      mcp = await connectOktaMcp(config, token);
+      mcp = await connectOktaMcp(tab);
       const okta = await oktaTools(mcp);
       const chosen = await pickTools(okta, messages.at(-1)!, abort.signal);
 

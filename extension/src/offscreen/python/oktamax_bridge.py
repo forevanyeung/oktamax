@@ -4,33 +4,39 @@ There's no stdio in the browser, so instead of `mcp.run()` each `Session` connec
 the server to two in-memory streams: `receive(json)` feeds it a message from
 JavaScript, and each message it sends is passed to the `post` callback.
 
-As on the chat server (server/python/oktamax_keyring.py), the admin's access
-token reaches the server through a keyring backend, read on every tool call:
-here it calls `get_token`, a JavaScript function returning the current token.
+There's no access token: the admin console sends the server's Okta requests with
+the admin's session (see oktamax_fetch.py). The server still checks for a token
+before it starts, so a keyring backend hands it a placeholder that never expires.
 """
 
 import asyncio
+import base64
+import json
 import os
 import sys
 
 import anyio
 import keyring
+import oktamax_fetch
 from keyring.backend import KeyringBackend
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage
 
 
-class JsTokenKeyring(KeyringBackend):
+def _placeholder_token():
+    """A JWT-shaped token that passes the server's expiry check; it's never sent to Okta."""
+
+    def part(claims):
+        return base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+
+    return f"{part({'alg': 'none'})}.{part({'exp': 2**31 - 1})}."
+
+
+class SessionKeyring(KeyringBackend):
     priority = 1
 
-    def __init__(self, get_token):
-        super().__init__()
-        self._get_token = get_token
-
     def get_password(self, service, username):
-        if username != "api_token":
-            return None  # no refresh token: renewing is the extension's job
-        return self._get_token() or None
+        return _placeholder_token() if username == "api_token" else None
 
     def set_password(self, service, username, password):
         pass
@@ -42,13 +48,14 @@ class JsTokenKeyring(KeyringBackend):
 _mcp = None
 
 
-def load(env, get_token):
+def load(env):
     """Loads okta-mcp-server with the given environment (OKTA_ORG_URL, OKTA_SCOPES, ...)."""
     global _mcp
+    # Required by the server, for the sign-in it never gets to do.
+    os.environ["OKTA_CLIENT_ID"] = "admin-console-session"
     os.environ.update(env)
-    keyring.set_keyring(JsTokenKeyring(get_token))
+    keyring.set_keyring(SessionKeyring())
 
-    import oktamax_fetch
     import oktamax_stubs
 
     oktamax_stubs.install()
@@ -81,13 +88,17 @@ def load(env, get_token):
 
 
 class Session:
-    """One MCP session (like one stdio process): messages in with `receive`, out through `post`."""
+    """One MCP session (like one stdio process): messages in with `receive`, out through `post`.
 
-    def __init__(self, post):
+    Its Okta requests go to `fetch`, which sends them from the session's admin console tab.
+    """
+
+    def __init__(self, post, fetch):
         self._to_server, server_in = anyio.create_memory_object_stream(64)
         server_out, from_server = anyio.create_memory_object_stream(64)
 
         async def serve():
+            oktamax_fetch.session_fetch.set(fetch)  # inherited by every task the server starts
             server = _mcp._mcp_server
             await server.run(server_in, server_out, server.create_initialization_options())
 

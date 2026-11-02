@@ -28,8 +28,7 @@ export default defineManifest({
   // offscreen: the on-device assistant runs Okta's MCP server in an offscreen document.
   permissions: ['storage', 'identity', 'offscreen'],
   host_permissions: [
-    // Token exchange with the Okta org authorization server, and the on-device
-    // assistant's Okta API calls.
+    // Token exchange with the Okta org authorization server.
     'https://*.okta.com/*',
     'https://*.oktapreview.com/*',
     'https://*.okta-emea.com/*',

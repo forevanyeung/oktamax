@@ -1,17 +1,24 @@
-"""Sends the Okta SDK's requests with the browser's fetch.
+"""Sends the Okta SDK's requests through the admin's console tab.
 
 The SDK makes every API call through `okta.http_client.HTTPClient.send_request`,
-with aiohttp, which has no sockets under Pyodide. This replaces that one method,
-returning a response object with the attributes the SDK reads from aiohttp's.
+with aiohttp, which has no sockets under Pyodide. This replaces that one method:
+each request goes to the JavaScript `fetch` of the MCP session making it, which
+has the admin console send it with the admin's session (`oktaGet` in
+src/content/oktaGet.ts). It returns a response object with the attributes the
+SDK reads from aiohttp's.
 """
 
 import json
 import re
+from contextvars import ContextVar
 
 from multidict import CIMultiDict, CIMultiDictProxy
 from okta.http_client import HTTPClient
-from pyodide.http import pyfetch
 from yarl import URL
+
+#: The current MCP session's `fetch(request_json) -> Promise<response_json>`, set by
+#: `oktamax_bridge.Session` for everything the session runs.
+session_fetch = ContextVar("session_fetch")
 
 
 def _links(header):
@@ -29,9 +36,9 @@ def _links(header):
 
 class FetchResponse:
     def __init__(self, response, headers):
-        self.status = response.status
-        self.reason = response.status_text
-        self.url = URL(response.url)
+        self.status = response["status"]
+        self.reason = response["statusText"]
+        self.url = URL(response["url"])
         self.headers = CIMultiDictProxy(headers)
         self.content_type = headers.get("Content-Type", "").split(";")[0].strip()
         self.links = _links(", ".join(headers.getall("Link", [])))
@@ -39,27 +46,21 @@ class FetchResponse:
 
 
 async def send_request(self, request):
-    headers = {**self._default_headers, **request["headers"]}
-    # okta 3.4.x builds "Bearer<token>", without the space, for its generated API methods.
-    authorization = headers.get("Authorization", "")
-    if authorization.startswith("Bearer") and not authorization.startswith("Bearer "):
-        headers["Authorization"] = f"Bearer {authorization[len('Bearer'):]}"
-    body = None
-    if request["data"]:
-        body = json.dumps(request["data"])
-    elif request.get("json"):
-        body = json.dumps(request["json"])
-        headers.setdefault("Content-Type", "application/json")
-    elif request["form"]:
-        # Forms are only used for sign-in and uploads, which the extension never does.
-        return (None, None, None, ValueError("form requests aren't supported in the browser"))
+    if request["data"] or request.get("json") or request["form"]:
+        # The admin console only sends GETs for the assistant: it can't change anything.
+        return (None, None, None, ValueError("the on-device assistant can only read"))
     try:
-        response = await pyfetch(request["url"], method=request["method"], headers=headers, body=body)
-        response_headers = CIMultiDict()
-        for name, value in response.js_response.headers.entries():
-            response_headers.add(name, value)
-        return (None, FetchResponse(response, response_headers), await response.string(), None)
-    except Exception as error:  # network errors surface as JS exceptions
+        fetch = session_fetch.get()
+        response = json.loads(
+            await fetch(json.dumps({"url": request["url"], "method": request["method"]}))
+        )
+        if "error" in response:
+            raise RuntimeError(response["error"])
+        headers = CIMultiDict()
+        for name, value in response["headers"]:
+            headers.add(name, value)
+        return (None, FetchResponse(response, headers), response["body"], None)
+    except Exception as error:  # the tab was closed, the session ended, ...
         return (None, None, None, error)
 
 

@@ -301,15 +301,18 @@ Build and load the extension as in [Install](#install), then:
 
 ### On-device assistant (no server)
 
-The popup's **Assistant** switch has a second mode, **On-device**, that needs no chat server:
+The popup's **Assistant** switch has a second mode, **On-device**, that needs no chat server, no
+OIDC app and no sign-in: turn it on, download the model, and ask on any org's admin console.
 
 ```
 Admin console tab            Service worker                        Offscreen document
 ┌──────────────────┐  port  ┌──────────────────────────────┐ port  ┌────────────────────────────┐
 │ chat panel       │───────▶│ the chat server's routes      │──────▶│ Pyodide (CPython on WASM)  │
-│ (unchanged)      │◀───────│ AI SDK + Gemini Nano          │◀──────│ okta-mcp-server, unmodified│──▶ Okta API
-└──────────────────┘        │ (Prompt API, @browser-ai/core)│  MCP  │ (fetch, the admin's token) │    (as the admin)
-                            └──────────────────────────────┘       └────────────────────────────┘
+│ (unchanged)      │◀───────│ AI SDK + Gemini Nano          │◀──────│ okta-mcp-server, unmodified│
+│                  │        │ (Prompt API, @browser-ai/core)│  MCP  │                            │
+│ Okta API GETs    │◀───────│ GETs to the tab's org only    │◀──────│ the SDK's requests         │
+│ (admin's session)│───────▶│                               │──────▶│                            │
+└──────────────────┘        └──────────────────────────────┘       └────────────────────────────┘
 ```
 
 - **The model** is Chrome's built-in Gemini Nano (the Prompt API, stable for extensions since
@@ -320,20 +323,30 @@ Admin console tab            Service worker                        Offscreen doc
   offscreen document (`extension/src/offscreen/`). The differences from the hosted server are:
   - There's no stdio in a browser, so the bridge feeds MCP JSON-RPC to the server over in-memory
     streams.
-  - A keyring backend hands the server the token the service worker sends over the port.
-  - The Okta SDK's one HTTP method is replaced to use `fetch` instead of aiohttp.
+  - The Okta SDK's one HTTP method is replaced. Each request goes back to the service worker, which
+    has the admin console tab the chat is on send it (`extension/src/content/oktaGet.ts`), with
+    the admin's session, like the console's own calls and the API console's.
+  - There's no access token. The server still checks for one before it starts, so a keyring
+    backend hands it a placeholder that's never sent anywhere.
   - pycryptodomex and jwcrypto, used only for private-key sign-in, are stubbed.
 
-  The same read-only limits apply as on the server: read scopes only, `OKTA_SCOPES` limited to
-  them, and only `list_*`/`get_*` tools given to the model.
+- **The org** is the admin console the chat is on: `acme-admin.okta.com` is `acme.okta.com`'s.
+  Switching orgs restarts the MCP server, which takes a few seconds.
+- **Read-only, without read-only scopes.** The session has the admin's full rights, so reading is
+  enforced at every step instead:
+  - `OKTA_SCOPES` lists only read scopes, so the server drops its write tools.
+  - Only `list_*`/`get_*` tools are given to the model, as on the chat server's gateway.
+  - The service worker only passes on GETs to the tab's org.
+  - The tab only sends GETs under `/api/`, without the XSRF token Okta requires for changes.
+
+  The assistant can see whatever the admin can, rather than only what the OIDC app's scopes allow.
 
 - **Everything is bundled.** `npm run pyodide -w @oktamax/extension`, which the build runs when
   `public/pyodide/` is missing, resolves the server's dependencies with micropip. It vendors
   Pyodide and 59 wheels, about 26 MB, so nothing is downloaded at runtime: the Chrome Web Store
   doesn't allow remote code. The extension's CSP adds `'wasm-unsafe-eval'` for that and nothing
   else.
-- **Settings:** the org URL and the OIDC app's client ID go in the popup (the chat server normally
-  provides them). The app is the same one as in [Setup](#setup).
+- **It needs the admin console open**, which it always is while chatting: the panel lives there.
 
 What it costs:
 
@@ -467,10 +480,11 @@ their history. Screenshots are saved to `extension/e2e/*.png`.
   question, navigates to another page mid-answer, and checks that the answer resumes and finishes,
   history survives a reload without duplicates, and the page context reached the server.
 - **`extension/e2e/onDevice.ts`** runs the on-device assistant, with no server. It uses the real
-  `okta-mcp-server` on Pyodide in the offscreen document, against a fake HTTPS Okta, with a scripted
-  stand-in for `LanguageModel` (Playwright's Chromium has no Gemini Nano). It checks that a question
-  picks a tool, the call goes through Python to Okta with the admin's token, the answer streams
-  into the panel, and every prompt fits Nano's context window.
+  `okta-mcp-server` on Pyodide in the offscreen document, against a fake Okta API on the admin
+  console, with a scripted stand-in for `LanguageModel` (Playwright's Chromium has no Gemini Nano).
+  The only setting it changes is the assistant mode. It checks that a question picks a tool, the
+  call goes from Python through the tab as a GET with the admin's session cookie and no token, the
+  answer streams into the panel, and every prompt fits Nano's context window.
 
 **`npm run verify:okta-mcp -w @oktamax/server`** checks the gateway against the **real**
 `okta-mcp-server` (it needs `uv`). It starts two admins' processes against a fake HTTPS Okta and

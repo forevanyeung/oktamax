@@ -13,9 +13,6 @@ export interface Settings {
   /** Base URL of the chat server, e.g. https://oktamax.example.com. Empty disables the chat. */
   chatServerUrl: string;
   assistant: AssistantMode;
-  /** On-device only (the chat server provides these otherwise): the org, and the OIDC app to sign in with. */
-  oktaOrgUrl: string;
-  oktaClientId: string;
 }
 
 const defaults: Settings = {
@@ -24,8 +21,6 @@ const defaults: Settings = {
   showApiConsole: true,
   chatServerUrl: 'http://localhost:8787',
   assistant: 'server',
-  oktaOrgUrl: '',
-  oktaClientId: '',
 };
 
 /**

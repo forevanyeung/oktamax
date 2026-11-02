@@ -83,15 +83,11 @@ const Popup = () => {
   const [serverUrl, setServerUrl] = useState('');
   const [serverError, setServerError] = useState<string>();
   const [saved, setSaved] = useState(false);
-  const [org, setOrg] = useState({ oktaOrgUrl: '', oktaClientId: '' });
-  const [orgError, setOrgError] = useState<string>();
-  const [orgSaved, setOrgSaved] = useState(false);
 
   useEffect(() => {
     void loadSettings().then((s) => {
       setSettings(s);
       setServerUrl(s.chatServerUrl);
-      setOrg({ oktaOrgUrl: s.oktaOrgUrl, oktaClientId: s.oktaClientId });
     });
   }, []);
 
@@ -116,21 +112,6 @@ const Popup = () => {
     }
     update({ chatServerUrl: serverUrl.replace(/\/+$/, '') });
     setSaved(true);
-  };
-
-  const saveOrg = () => {
-    setOrgError(undefined);
-    let oktaOrgUrl: string;
-    try {
-      // The org, not its admin console: acme-admin.okta.com is acme.okta.com's.
-      oktaOrgUrl = new URL(org.oktaOrgUrl).origin.replace('-admin.', '.');
-    } catch {
-      setOrgError('Enter the org’s URL, e.g. https://acme.okta.com');
-      return;
-    }
-    update({ oktaOrgUrl, oktaClientId: org.oktaClientId.trim() });
-    setOrg((current) => ({ ...current, oktaOrgUrl }));
-    setOrgSaved(true);
   };
 
   return (
@@ -206,47 +187,14 @@ const Popup = () => {
         </fieldset>
       )}
       {settings?.assistant === 'onDevice' && (
-        <form
-          className="server"
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveOrg();
-          }}
-        >
+        <div className="server">
           <small>
-            Runs in Chrome: Gemini Nano answers, and Okta’s MCP server runs on WebAssembly. Only the
-            Okta API calls leave the browser.
+            Runs in Chrome, with nothing to set up: Gemini Nano answers, and Okta’s MCP server runs
+            on WebAssembly. It reads the org of the admin console it’s on, with your session, and
+            can’t change anything.
           </small>
-          <label htmlFor="org-url">Okta org URL</label>
-          <div>
-            <input
-              id="org-url"
-              type="url"
-              value={org.oktaOrgUrl}
-              placeholder="https://acme.okta.com"
-              aria-invalid={!!orgError}
-              onChange={(e) => {
-                setOrg({ ...org, oktaOrgUrl: e.target.value });
-                setOrgSaved(false);
-              }}
-            />
-          </div>
-          <label htmlFor="client-id">OIDC app client ID</label>
-          <div>
-            <input
-              id="client-id"
-              value={org.oktaClientId}
-              placeholder="0oa…"
-              onChange={(e) => {
-                setOrg({ ...org, oktaClientId: e.target.value });
-                setOrgSaved(false);
-              }}
-            />
-            <button type="submit">{orgSaved ? 'Saved' : 'Save'}</button>
-          </div>
-          {orgError && <small className="error">{orgError}</small>}
           <ModelStatus />
-        </form>
+        </div>
       )}
       {settings?.assistant === 'server' && (
         <form
