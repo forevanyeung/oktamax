@@ -32,6 +32,8 @@ export type McpPortRequest =
 
 /** Offscreen → worker. */
 export type McpPortResponse =
+  /** The session has started: MCP messages can flow. */
+  | { type: 'ready' }
   | { type: 'message'; json: string }
   | { type: 'oktaRequest'; id: number; request: OktaRequest }
   | { type: 'error'; message: string };

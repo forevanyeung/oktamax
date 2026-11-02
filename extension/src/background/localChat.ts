@@ -38,7 +38,7 @@ import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 import { onDeviceModel } from '../onDeviceModel';
 import { serveChats, type Message, type StartReply } from './chatRoutes';
 import type { AdminTab } from './messages';
-import { connectOktaMcp, isReadOnlyTool } from './oktaMcp';
+import { connectOktaMcp, isReadOnlyTool, SEE_CONSOLE } from './oktaMcp';
 
 const MAX_TOOLS = 2;
 const MAX_STEPS = 4;
@@ -96,9 +96,16 @@ async function oktaTools(mcp: MCPClient): Promise<Record<string, OktaTool>> {
         description,
         inputSchema: mcpTool.inputSchema,
         execute: async (input, options) => {
-          const result = (await mcpTool.execute!(input as never, options)) as {
-            content?: Array<{ type: string; text?: string }>;
-          };
+          let result: { content?: Array<{ type: string; text?: string }> };
+          try {
+            result = (await mcpTool.execute!(input as never, options)) as typeof result;
+          } catch (error) {
+            // The offscreen document closed or crashed mid-call; the next question reopens it.
+            if (error instanceof Error && error.message === 'Connection closed') {
+              throw new Error(`Okta's MCP server stopped. ${SEE_CONSOLE}`);
+            }
+            throw error;
+          }
           const text = (result.content ?? []).map((c) => c.text ?? '').join('\n');
           return text.length > MAX_TOOL_RESULT_CHARS
             ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n… (truncated; use filters or a smaller limit)`

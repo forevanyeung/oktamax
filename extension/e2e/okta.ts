@@ -115,12 +115,17 @@ async function answerSignInWidget(page: Page, account: Account, done: () => bool
       const isCode = /code|authenticator/i.test(heading) && !/password/i.test(heading);
       await passcode.fill(isCode ? await freshCode(secret) : password);
     } else {
-      // Authenticator picker: choose Google Authenticator.
-      const google = page
-        .locator('[data-se="authenticator-button"], .authenticator-row')
-        .filter({ hasText: /google authenticator/i })
-        .getByRole('link')
-        .or(page.locator('[data-se="google_otp"] [data-se="button"]'));
+      // Authenticator picker: choose Google Authenticator, or the password where it asks for
+      // that first (passkey or password, then the code).
+      const choose = (name: RegExp, key: string) =>
+        page
+          .locator('[data-se="authenticator-button"], .authenticator-row')
+          .filter({ hasText: name })
+          .getByRole('link')
+          .or(page.locator(`[data-se="${key}"] [data-se="button"]`));
+      const google = choose(/google authenticator/i, 'google_otp').or(
+        choose(/^\s*password/i, 'okta_password'),
+      );
       if (!(await google.first().isVisible())) {
         await page.screenshot({ path: resolve(screenshots, `signin-${account}-stuck.png`) });
         throw new Error(`Unrecognised sign-in step: "${heading.trim()}"`);
@@ -130,6 +135,7 @@ async function answerSignInWidget(page: Page, account: Account, done: () => bool
         .first()
         .click({ timeout: 5_000 })
         .catch(() => {});
+      await passcode.waitFor({ timeout: 10_000 }).catch(() => {});
       continue;
     }
 

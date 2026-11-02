@@ -12,7 +12,7 @@
  *
  *   npm run pyodide -w @oktamax/extension
  *
- * `vp build` runs it with --if-missing, so a fresh checkout builds a working
+ * `build` and `dev` run it with --if-missing, so a fresh checkout builds a working
  * extension; run it without to update.
  */
 import { existsSync } from 'node:fs';

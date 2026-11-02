@@ -66,10 +66,14 @@ chrome.runtime.onConnect.addListener((port) => {
   const session = server.then((module) =>
     module.Session((json: string) => post({ type: 'message', json }), fetchOkta),
   );
-  session.catch((error: unknown) => {
-    post({ type: 'error', message: `Okta's MCP server didn't start: ${String(error)}` });
-    port.disconnect();
-  });
+  session.then(
+    () => post({ type: 'ready' }),
+    (error: unknown) => {
+      console.error('[okta-mcp]', error);
+      post({ type: 'error', message: `Okta's MCP server didn't start: ${String(error)}` });
+      port.disconnect();
+    },
+  );
 
   port.onMessage.addListener((message: McpPortRequest) => {
     if (message.type === 'oktaResponse') {

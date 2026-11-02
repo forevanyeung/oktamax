@@ -5,7 +5,7 @@
   "description": "Chrome extension: read-only 'View' dialogs, an API console, dark mode and an on-page assistant (hosted or on-device) for the Okta admin console.",
   "type": "module",
   "scripts": {
-    "dev": "vp dev",
+    "dev": "node scripts/pyodide.mjs --if-missing && vp dev",
     "build": "node scripts/pyodide.mjs --if-missing && vp build",
     "icons": "node scripts/icons.mjs",
     "endpoints": "node scripts/endpoints.mjs",

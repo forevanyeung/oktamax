@@ -516,6 +516,7 @@ cd extension
 npx vpx e2e/okta.ts            # check both accounts can sign in (sessions are kept in e2e/.profiles)
 npx vpx e2e/seed.ts            # as the super admin, create "Oktamax …" test objects (re-runnable)
 npm run build && npx vpx e2e/live.ts   # as the read-only admin, open every view; screenshots in e2e/live/
+npm run build && npx vpx e2e/liveOnDevice.ts   # the on-device assistant reads the org (scripted model)
 ```
 
 The seed only creates new objects, and scopes its policies to a test group or test app. Policy

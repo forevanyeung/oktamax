@@ -50,10 +50,25 @@ async function openOffscreen(env: OktaMcpEnv) {
   });
 }
 
-// Only one offscreen document can exist: open them one at a time.
+// Only one offscreen document can exist: open and close them one at a time.
 let opening = Promise.resolve();
-const ensureOffscreen = (env: OktaMcpEnv) =>
-  (opening = opening.catch(() => undefined).then(() => openOffscreen(env)));
+const queue = (step: () => Promise<void>) => (opening = opening.catch(() => undefined).then(step));
+const ensureOffscreen = (env: OktaMcpEnv) => queue(() => openOffscreen(env));
+/** Closes the offscreen document, so the next question loads the server again. */
+const closeOffscreen = () =>
+  queue(async () => {
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
+    });
+    if (contexts.length > 0) await chrome.offscreen.closeDocument();
+  });
+
+/** Where to look when the server fails: the offscreen document's console has Python's errors. */
+/** Python usually loads in under 10 s; a slow machine gets plenty more. */
+const START_TIMEOUT_MS = 60_000;
+
+export const SEE_CONSOLE =
+  'Its console is under chrome://extensions → Okta Max → Inspect views → offscreen document.';
 
 /** Has `tab` send the server's request, if it's a GET to the tab's org. */
 async function sendFromTab(tab: AdminTab, request: OktaRequest): Promise<OktaResponse> {
@@ -76,30 +91,64 @@ async function sendFromTab(tab: AdminTab, request: OktaRequest): Promise<OktaRes
   }
 }
 
-/** An MCP transport over a port to the offscreen document; `tab` sends the server's Okta requests. */
+/**
+ * An MCP transport over a port to the offscreen document; `tab` sends the server's Okta
+ * requests. Starting waits for the server's session, failing with its error if it doesn't.
+ */
 function portTransport(tab: AdminTab): MCPTransport {
   let port: chrome.runtime.Port | undefined;
+  const onMessage = (message: McpPortResponse) => {
+    if (message.type === 'message') {
+      transport.onmessage?.(JSON.parse(message.json) as JSONRPCMessage);
+    } else if (message.type === 'oktaRequest') {
+      void sendFromTab(tab, message.request).then((response) =>
+        port?.postMessage({
+          type: 'oktaResponse',
+          id: message.id,
+          response,
+        } satisfies McpPortRequest),
+      );
+    }
+  };
   const transport: MCPTransport = {
-    async start() {
-      port = chrome.runtime.connect({ name: MCP_PORT });
-      port.onMessage.addListener((message: McpPortResponse) => {
-        if (message.type === 'message') {
-          transport.onmessage?.(JSON.parse(message.json) as JSONRPCMessage);
-        } else if (message.type === 'oktaRequest') {
-          void sendFromTab(tab, message.request).then((response) =>
-            port?.postMessage({
-              type: 'oktaResponse',
-              id: message.id,
-              response,
-            } satisfies McpPortRequest),
-          );
-        } else transport.onerror?.(new Error(message.message));
-      });
-      port.onDisconnect.addListener(() => {
-        port = undefined;
-        transport.onclose?.();
-      });
-    },
+    start: () =>
+      new Promise<void>((resolve, reject) => {
+        let started = false;
+        let error: string | undefined;
+        const connected = chrome.runtime.connect({ name: MCP_PORT });
+        port = connected;
+
+        const failToStart = () => {
+          clearTimeout(timer);
+          port = undefined;
+          // Load it again next time rather than keep failing.
+          void closeOffscreen();
+          const reason = (error ?? "Okta's MCP server didn't start").replace(/\.?$/, '.');
+          reject(new Error(`${reason} ${SEE_CONSOLE}`));
+        };
+        // Pyodide waits forever on a file it can't load, rather than failing.
+        const timer = setTimeout(() => {
+          error = `Okta's MCP server didn't start within ${START_TIMEOUT_MS / 1000} s.`;
+          connected.disconnect();
+          failToStart();
+        }, START_TIMEOUT_MS);
+
+        connected.onMessage.addListener((message: McpPortResponse) => {
+          if (message.type === 'ready') {
+            started = true;
+            clearTimeout(timer);
+            resolve();
+          } else if (message.type === 'error') {
+            error = message.message;
+            if (started) transport.onerror?.(new Error(error));
+          } else onMessage(message);
+        });
+        connected.onDisconnect.addListener(() => {
+          if (!started) return failToStart();
+          port = undefined;
+          transport.onclose?.();
+        });
+      }),
     async send(message) {
       if (!port) throw new Error("Okta's MCP server isn't connected");
       port.postMessage({ type: 'message', json: JSON.stringify(message) } satisfies McpPortRequest);
