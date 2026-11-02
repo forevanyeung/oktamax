@@ -24,7 +24,8 @@ const DOWNLOAD_TIMEOUT_MS = 60 * 60_000;
 
 /** One Prompt API call, as timed in the service worker. */
 interface ModelCall {
-  kind: 'prompt' | 'json' | 'stream';
+  /** `create`: starting a session, which reads its initial prompts (instructions, tools). */
+  kind: 'create' | 'prompt' | 'json' | 'stream';
   /** Characters sent, including the session's initial prompts. */
   chars: number;
   /** Tokens in the session's context afterwards, where Chrome reports it. */
@@ -40,12 +41,14 @@ interface Result {
   page: string;
   pass: boolean;
   problems: string[];
-  tools: Array<{ tool: string; input: unknown; error?: string }>;
+  tools: Array<{ tool: string; input: unknown; output?: unknown; error?: string }>;
   answer: string;
   facts: { expected: Fact[]; missing: Fact[] };
   ms: number;
   modelMs: number;
   modelCalls: ModelCall[];
+  /** The service worker's `[on-device]` timings: MCP connection, each Okta call. */
+  timings: string[];
 }
 
 /** Times every Prompt API call the extension makes. Runs in the service worker. */
@@ -65,8 +68,10 @@ function installMetrics() {
   g.oktamaxEval = { calls };
   const create = g.LanguageModel.create.bind(g.LanguageModel);
   g.LanguageModel.create = async (options) => {
+    const creating = performance.now();
     const session = await create(options);
     const initial = JSON.stringify(options?.initialPrompts ?? []).length;
+    calls.push({ kind: 'create', chars: initial, ms: performance.now() - creating });
     const usage = () => session.contextUsage ?? session.inputUsage;
     const prompt = session.prompt.bind(session);
     session.prompt = async (input, promptOptions) => {
@@ -160,12 +165,19 @@ const textOf = (message: Message | undefined) =>
 /** Tool calls in a reply: Okta's (dynamic) and the page tools. */
 function toolCalls(message: Message | undefined) {
   return (message?.parts ?? []).flatMap((part) => {
-    const p = part as { type: string; toolName?: string; input?: unknown; errorText?: string };
-    if (p.type === 'dynamic-tool')
-      return [{ tool: p.toolName!, input: p.input, error: p.errorText }];
-    if (p.type.startsWith('tool-'))
-      return [{ tool: p.type.slice(5), input: p.input, error: p.errorText }];
-    return [];
+    const p = part as {
+      type: string;
+      toolName?: string;
+      input?: unknown;
+      output?: unknown;
+      errorText?: string;
+    };
+    const tool = p.type === 'dynamic-tool' ? p.toolName : p.type.match(/^tool-(.+)$/)?.[1];
+    if (!tool) return [];
+    // Page tools report a bad request in their output rather than failing.
+    const refused = (p.output as { ok?: boolean; error?: string } | undefined)?.ok === false;
+    const error = p.errorText ?? (refused ? (p.output as { error: string }).error : undefined);
+    return [{ tool, input: p.input, output: p.output, error }];
   });
 }
 
@@ -224,6 +236,11 @@ async function runCase(test: Case, page: Page, worker: Worker, api: Api): Promis
   let tools: Result['tools'] = [];
   let ms = 0;
   let modelCalls: ModelCall[] = [];
+  const timings: string[] = [];
+  const onConsole = (m: { text(): string }) => {
+    if (m.text().startsWith('[on-device]')) timings.push(m.text().slice(12));
+  };
+  worker.on('console', onConsole);
   try {
     const { reply, ms: took, calls } = await ask(page, worker, test.question);
     answer = textOf(reply);
@@ -232,13 +249,15 @@ async function runCase(test: Case, page: Page, worker: Worker, api: Api): Promis
     modelCalls = calls;
   } catch (error) {
     problems.push(String(error instanceof Error ? error.message : error));
+  } finally {
+    worker.off('console', onConsole);
   }
 
   const used = tools.map((t) => t.tool);
-  if (test.tools.length > 0 && !test.tools.some((t) => used.includes(t))) {
+  if (test.tools?.length && !test.tools.some((t) => used.includes(t))) {
     problems.push(`expected ${test.tools.join(' or ')}, used ${used.join(', ') || 'no tools'}`);
   }
-  if (test.tools.length === 0 && used.length > 0) problems.push(`used ${used.join(', ')}`);
+  if (test.tools?.length === 0 && used.length > 0) problems.push(`used ${used.join(', ')}`);
   for (const t of tools) if (t.error) problems.push(`${t.tool} failed: ${t.error.slice(0, 200)}`);
   const says = (text: string) => answer.toLowerCase().includes(text.toLowerCase());
   const missing = expected.filter((fact) => ![fact].flat().some(says));
@@ -264,6 +283,7 @@ async function runCase(test: Case, page: Page, worker: Worker, api: Api): Promis
     ms,
     modelMs: modelCalls.reduce((sum, c) => sum + c.ms, 0),
     modelCalls,
+    timings,
   };
 }
 
@@ -285,9 +305,11 @@ async function main() {
     });
     await ensureModel(worker, page, evalChrome.extensionId);
 
-    await page.goto(`${adminUrl}/admin/dashboard`, { waitUntil: 'domcontentloaded' });
+    // Facts are read from a tab of their own: the test's tab navigates mid-answer.
+    const apiPage = await evalChrome.context.newPage();
+    await apiPage.goto(`${adminUrl}/admin/dashboard`, { waitUntil: 'domcontentloaded' });
     const api: Api = (path) =>
-      page.evaluate(
+      apiPage.evaluate(
         async (p) => (await fetch(p, { headers: { Accept: 'application/json' } })).json(),
         path,
       );
@@ -302,6 +324,14 @@ async function main() {
           `(model ${seconds(result.modelMs)} s, ${result.modelCalls.length} calls)  tools: ${tools}`,
       );
       for (const problem of result.problems) console.log(`      ${problem}`);
+      if (process.env.TIMINGS) {
+        for (const t of result.timings) console.log(`      · ${t}`);
+        for (const c of result.modelCalls) {
+          console.log(
+            `      · ${c.kind} ${seconds(c.ms)} s (${c.chars} chars${c.tokens ? `, ${c.tokens} tokens` : ''})`,
+          );
+        }
+      }
     }
 
     const passed = results.filter((r) => r.pass).length;

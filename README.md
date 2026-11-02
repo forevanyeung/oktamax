@@ -353,12 +353,25 @@ Admin console tab            Service worker                        Offscreen doc
 
 What it costs:
 
-- **Context window.** Gemini Nano has about 6,000 tokens. Okta's 47 read tools take about 17,000,
-  so the whole set can't be offered at once. Each question first asks the model to pick at most two
-  tools from a one-line list, then answers with only those, using short descriptions.
-  - Tool results are cut to 4,000 characters, page text to 1,500, and history to the last 6
-    messages.
-  - Answers take at most 4 steps.
+- **A guide in front of Okta's MCP server** (`extension/src/background/guide.ts`). The evals showed
+  Nano can't use okta-mcp-server's 47 read tools directly: picking from them took up to 30 s, and it
+  made up IDs and filter syntax that Okta rejects. So Nano gets about ten simple tools that take
+  names and fixed choices, such as `group_members({group: "Oktamax Engineering"})` or
+  `policies({type: "password"})`. Each one calls okta-mcp-server's tools, which still make every Okta
+  call:
+  - they look up IDs from names, write Okta's filters, and return only what an answer needs, with
+    a one-sentence summary;
+  - which ones Nano is offered (at most three) is picked from the question's words and the page,
+    without asking the model;
+  - "this group" or "this app" is the one on the page, whatever Nano calls it.
+- **Keeping Nano on track** (`extension/src/background/localChat.ts`):
+  - It looks something up once (twice if that fails), then has to answer.
+  - If it writes no answer, which it does when it tries another tool call instead, the lookup's
+    summary is the answer.
+  - Tool calls it wasn't offered, or got wrong, are left out of the reply.
+  - A request to change something starts with a fixed sentence saying the assistant can only read.
+- **Context window.** Gemini Nano has about 6,000 tokens. The largest prompt in the evals is about
+  830 tokens. Page text is cut to 1,500 characters and history to the last 6 messages.
 - **Tool calls are emulated.** Native tool calling in the Prompt API is still behind a flag.
   `@browser-ai/core` describes the tools in the system prompt and parses fenced JSON calls, one per
   step. It's noticeably less reliable than Claude at multi-step lookups.
@@ -485,7 +498,7 @@ their history. Screenshots are saved to `extension/e2e/*.png`.
 - **`extension/e2e/onDevice.ts`** runs the on-device assistant, with no server. It uses the real
   `okta-mcp-server` on Pyodide in the offscreen document, against a fake Okta API on the admin
   console, with a scripted stand-in for `LanguageModel` (Playwright's Chromium has no Gemini Nano).
-  The only setting it changes is the assistant mode. It checks that a question picks a tool, the
+  The only setting it changes is the assistant mode. It checks that the guide's tool runs, the
   call goes from Python through the tab as a GET with the admin's session cookie and no token, the
   answer streams into the panel, and every prompt fits Nano's context window.
 
@@ -552,6 +565,14 @@ npm run evals -- user-count saml-apps           # some of them
 
   A table goes to the terminal and the details, including each answer, to
   `evals/results/<time>.json`.
+  With `TIMINGS=1`, it also prints the MCP connection, each Okta call, and each Prompt API session
+  and prompt.
+
+- **Results** on the integrator org (12 cases): giving Nano okta-mcp-server's tools directly passed
+  2; with the guide, 10–11 pass from run to run, and the largest prompt fell from about 5,300
+  tokens to about 830. Answers took a median of 10–56 s, varying between runs. Most of that time
+  is Nano starting a session after being idle for 10 s or more, which takes 2–25 s. Neither keeping
+  a session open nor cloning one avoided it.
 
 ## Known limitations
 

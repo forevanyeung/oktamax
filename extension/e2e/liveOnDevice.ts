@@ -1,7 +1,7 @@
 /**
  * Live check of the on-device assistant against a real org: signs in as the
  * read-only admin, turns the assistant on (its only setting), and asks a
- * question that runs okta-mcp-server's list_users through the admin console
+ * question that runs the guide's find_users (okta-mcp-server's list_users) through the admin console
  * tab. The model is a scripted stand-in for Gemini Nano, as in `onDevice.ts`
  * (Playwright's Chromium doesn't have it); everything else is real.
  *
@@ -59,10 +59,10 @@ const context = await launch('read');
 const page = await signIn(context, 'read');
 const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
 worker.on('console', (m) => console.log(`[worker ${m.type()}]`, m.text()));
-// The tool to call, e.g. TOOL=get_logs ARGS='{"limit": 20}'; list_users by default.
+// The tool to call, e.g. TOOL=sign_ins ARGS='{"when": "today"}'; find_users by default.
 const call = {
-  name: process.env.TOOL ?? 'list_users',
-  arguments: JSON.parse(process.env.ARGS ?? '{"limit": 20}') as object,
+  name: process.env.TOOL ?? 'find_users',
+  arguments: JSON.parse(process.env.ARGS ?? '{}') as object,
 };
 await worker.evaluate(installScriptedModel, call);
 await worker.evaluate(() => chrome.storage.sync.set({ assistant: 'onDevice' }));

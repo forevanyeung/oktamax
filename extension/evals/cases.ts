@@ -39,14 +39,20 @@ export interface Case {
   /** Admin console path the question is asked on; may depend on the org. */
   page: string | ((api: Api) => Promise<string>);
   question: string;
-  /** A good answer calls at least one of these. Empty: it shouldn't need a tool. */
-  tools: string[];
+  /**
+   * A good answer calls at least one of these. Empty: it shouldn't need a tool. Left out:
+   * either is fine (the page may already show the answer).
+   */
+  tools?: string[];
   /** What the answer must contain (case-insensitive); an array is any one of its strings. */
   facts?: (api: Api) => Promise<Fact[]>;
   /** Patterns the answer must match. */
   says?: RegExp[];
   /** Checks on the tool calls themselves, e.g. a navigation's target. */
-  calls?: (calls: Array<{ tool: string; input: unknown }>, api: Api) => Promise<string | undefined>;
+  calls?: (
+    calls: Array<{ tool: string; input: unknown; output?: unknown }>,
+    api: Api,
+  ) => Promise<string | undefined>;
 }
 
 const users = (api: Api) => api<User[]>('/api/v1/users?limit=200');
@@ -64,28 +70,28 @@ export const cases: Case[] = [
     id: 'user-count',
     page: '/admin/users',
     question: 'How many users are in this org?',
-    tools: ['list_users'],
+    tools: ['find_users'],
     facts: async (api) => [String((await users(api)).length)],
   },
   {
     id: 'staged-users',
     page: '/admin/users',
     question: "Which users haven't been activated yet?",
-    tools: ['list_users'],
+    tools: ['find_users'],
     facts: async (api) => (await users(api)).filter((u) => u.status === 'STAGED').map(user),
   },
   {
     id: 'user-status',
     page: '/admin/dashboard',
     question: "What's Grace Hopper's account status?",
-    tools: ['list_users', 'get_user'],
+    tools: ['user_details', 'find_users'],
     facts: async (api) => [(await byLogin(api, 'grace.hopper')).status],
   },
   {
     id: 'user-groups',
     page: '/admin/dashboard',
     question: 'Which groups is ada.lovelace@oktamax.example in?',
-    tools: ['list_user_groups'],
+    tools: ['user_groups'],
     facts: async (api) => {
       const ada = await byLogin(api, 'ada.lovelace');
       return (await api<Group[]>(`/api/v1/users/${ada.id}/groups`)).map((g) => g.profile.name);
@@ -95,7 +101,7 @@ export const cases: Case[] = [
     id: 'groups',
     page: '/admin/groups',
     question: 'What groups do we have, apart from the built-in ones?',
-    tools: ['list_groups'],
+    tools: ['find_groups'],
     facts: async (api) =>
       (await groups(api)).filter((g) => g.type === 'OKTA_GROUP').map((g) => g.profile.name),
   },
@@ -103,7 +109,7 @@ export const cases: Case[] = [
     id: 'group-members-here',
     page: async (api) => `/admin/group/${(await byName(api, 'Oktamax Engineering')).id}`,
     question: 'Who is in this group?',
-    tools: ['list_group_users'],
+    tools: ['group_members'],
     facts: async (api) => {
       const group = await byName(api, 'Oktamax Engineering');
       return (await api<User[]>(`/api/v1/groups/${group.id}/users`)).map(user);
@@ -113,7 +119,7 @@ export const cases: Case[] = [
     id: 'saml-apps',
     page: '/admin/apps/active',
     question: 'Which apps use SAML?',
-    tools: ['list_applications'],
+    tools: ['find_apps'],
     facts: async (api) =>
       (await apps(api)).filter((a) => a.signOnMode === 'SAML_2_0').map((a) => a.label),
   },
@@ -124,14 +130,14 @@ export const cases: Case[] = [
       return `/admin/app/${app.name}/instance/${app.id}/`;
     },
     question: 'How do users sign in to this app?',
-    tools: ['get_application'],
+    // The app's page shows its sign-on type, so answering from it is fine too.
     says: [/SAML/i],
   },
   {
     id: 'password-policies',
     page: '/admin/access/authenticators',
     question: 'What password policies are there?',
-    tools: ['list_policies'],
+    tools: ['policies'],
     facts: async (api) =>
       (await api<Array<{ name: string }>>('/api/v1/policies?type=PASSWORD')).map((p) => p.name),
   },
@@ -142,7 +148,7 @@ export const cases: Case[] = [
       return `/admin/app/${app.name}/instance/${app.id}/`;
     },
     question: 'Bring up today’s sign-ins to this app',
-    tools: ['open_in_api_console', 'get_logs'],
+    tools: ['open_in_api_console', 'sign_ins'],
   },
   {
     id: 'navigate-group',
@@ -152,7 +158,8 @@ export const cases: Case[] = [
     calls: async (calls, api) => {
       const group = await byName(api, 'Oktamax Contractors');
       const nav = calls.find((c) => c.tool === 'navigate');
-      const path = (nav?.input as { path?: string } | undefined)?.path ?? '';
+      // The page tools' output has the path the panel opens.
+      const path = (nav?.output as { path?: string } | undefined)?.path ?? '';
       return path.includes(group.id) ? undefined : `navigated to ${path || 'nowhere'}`;
     },
   },

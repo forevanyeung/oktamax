@@ -5,7 +5,7 @@
  * There's no chat server, no sign-in and no settings beyond turning it on.
  *
  * Chromium for testing has no Gemini Nano, so the Prompt API (`LanguageModel`)
- * is replaced in the service worker by a scripted stand-in: it picks list_users,
+ * is replaced in the service worker by a scripted stand-in: it calls find_users,
  * calls it the way @browser-ai/core asks models to, and answers from its result.
  * What it checks is everything around the model: tool selection, the MCP round
  * trip through Python, the Okta request sent by the tab with the session cookie,
@@ -30,15 +30,11 @@ const extensionPath = resolve(import.meta.dirname, '../dist');
 function installScriptedModel() {
   const prompts: number[] = [];
   const text = (messages: Array<{ content: unknown }>) => JSON.stringify(messages);
-  const reply = (
-    messages: Array<{ content: unknown }>,
-    options?: { responseConstraint?: unknown },
-  ) => {
+  const reply = (messages: Array<{ content: unknown }>) => {
     const all = text(messages);
-    if (options?.responseConstraint) return JSON.stringify({ tools: ['list_users'] });
     const login = /locked@example\.com/.exec(all);
     if (login) return `One user is locked out: **${login[0]}**.`;
-    return '```tool_call\n{"name": "list_users", "arguments": {"search": "status eq \\"LOCKED_OUT\\""}}\n```';
+    return '```tool_call\n{"name": "find_users", "arguments": {"status": "LOCKED_OUT"}}\n```';
   };
   class Session {
     contextWindow = 6144;
@@ -48,12 +44,9 @@ function installScriptedModel() {
     constructor(private initial: unknown) {}
     addEventListener() {}
     destroy() {}
-    async prompt(
-      messages: Array<{ content: unknown }>,
-      options?: { responseConstraint?: unknown },
-    ) {
+    async prompt(messages: Array<{ content: unknown }>) {
       prompts.push(text(messages).length + JSON.stringify(this.initial ?? null).length);
-      return reply(messages, options);
+      return reply(messages);
     }
     promptStreaming(messages: Array<{ content: unknown }>) {
       prompts.push(text(messages).length + JSON.stringify(this.initial ?? null).length);
@@ -139,7 +132,7 @@ async function main() {
   await panel.getByPlaceholder('Ask about this org…').press('Enter');
   // The first question waits for Python to load in the offscreen document.
   await panel.getByText('One user is locked out:').waitFor({ timeout: 90_000 });
-  await panel.getByText('Looked up: List users').waitFor();
+  await panel.getByText('Looked up: Find users').waitFor();
   console.log(`First answer in ${Date.now() - started} ms`);
   await page.screenshot({ path: join(import.meta.dirname, 'on-device.png') });
 

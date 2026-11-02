@@ -5,117 +5,54 @@
  * admin console tab the chat is on. Nothing leaves the browser except those
  * Okta API calls, and there's nothing to set up: no server, no OIDC app.
  *
- * Gemini Nano has a context window of about 6,000 tokens, and Okta's read tools
- * alone take about 17,000. So each question first picks a couple of tools from
- * a one-line list, and only those are offered, with short descriptions; tool
- * results, history and the page context are trimmed to fit.
+ * Nano gets a few simple tools from `guide.ts`, picked for each question, that
+ * call okta-mcp-server's tools; see there why. Its context window is about
+ * 6,000 tokens, so history and the page are trimmed, and it looks things up
+ * once (twice if that fails) before it has to answer.
  */
 import type { MCPClient } from '@ai-sdk/mcp';
 import {
   convertToModelMessages,
-  dynamicTool,
-  generateText,
   isStepCount,
-  jsonSchema,
   JsonToSseTransformStream,
-  Output,
+  NoSuchToolError,
   streamText,
-  tool,
   toUIMessageStream,
-  type Tool,
+  type StepResult,
+  type TextStreamPart,
   type ToolSet,
 } from 'ai';
 
 import type { PageContext } from '@oktamax/shared';
-import {
-  checkApiPath,
-  checkAdminPath,
-  NAVIGATE,
-  OPEN_IN_API_CONSOLE,
-} from '@oktamax/shared/pageTools';
+import { PAGE_TOOLS } from '@oktamax/shared/pageTools';
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
-import { onDeviceModel } from '../onDeviceModel';
+import { closeSession, onDeviceModel } from '../onDeviceModel';
 import { serveChats, type Message, type StartReply } from './chatRoutes';
+import { guideTools, routeTools, WRITE_REQUEST } from './guide';
 import type { AdminTab } from './messages';
-import { connectOktaMcp, isReadOnlyTool, SEE_CONSOLE } from './oktaMcp';
+import { connectOktaMcp } from './oktaMcp';
 
-const MAX_TOOLS = 2;
-const MAX_STEPS = 4;
+const MAX_STEPS = 3;
 const MAX_HISTORY = 6;
-const MAX_TOOL_RESULT_CHARS = 4_000;
 const MAX_PAGE_CHARS = 1_500;
 
-const instructions = `You are an assistant in the Okta admin console, helping an Okta administrator understand their org's configuration. You can only read: if asked to change something, say where in the admin console to do it.
-Look things up with the tools instead of guessing. Okta IDs (00u… users, 00g… groups, 0oa… apps) can be passed to tools. A message may start with <page_context>, the page the admin is on; "this app" or "here" refers to it. Be concise; use Markdown.`;
+const instructions = `You are an assistant in the Okta admin console, helping an Okta administrator understand their org's configuration. You can only read.
+Look things up with the tools instead of guessing, and answer from what they return: name the users, groups, apps or policies, and give counts. A message may start with <page_context>, the page the admin is on; "this app" or "here" refers to it. Be concise; use Markdown.`;
 
-const pathInput = jsonSchema<{ path: string }>({
-  type: 'object',
-  properties: { path: { type: 'string' } },
-  required: ['path'],
-});
+/** For the step after a lookup: Nano tends to keep calling tools it no longer has. */
+const ANSWER_NOW = `\nAnswer now, from the lookup results above. Don't call any tools.`;
 
-/** The chat server's page tools (`server/src/chat/pageTools.ts`), with shorter descriptions. */
-const pageTools = {
-  [OPEN_IN_API_CONSOLE]: tool({
-    description:
-      'Open a GET request in the API console at the bottom of the page, for "show me" or "bring up" requests. path: e.g. /api/v1/users?search=status eq "LOCKED_OUT"',
-    inputSchema: pathInput,
-    execute: async ({ path }) => checkApiPath(path),
-  }),
-  [NAVIGATE]: tool({
-    description:
-      'Take the admin to an admin console page, e.g. /admin/users, /admin/groups, /admin/apps/active, /admin/user/profile/view/{userId}, /admin/group/{groupId}.',
-    inputSchema: pathInput,
-    execute: async ({ path }) => checkAdminPath(path),
-  }),
-} satisfies ToolSet;
+const readOnlyInstructions = `${instructions}
+The admin is asking you to change something. You can't change anything: say so, and tell them where in the admin console they can do it themselves.`;
 
-/** The first paragraph of a tool's description: Okta's run to a page or more. */
-const summary = (description = '') =>
-  description
-    .split(/\n\s*\n/)[0]!
-    .trim()
-    .slice(0, 300);
-
-interface OktaTool {
-  /** First sentence of the description, for picking tools. */
-  brief: string;
-  tool: Tool;
-}
-
-/** Okta's read tools, with short descriptions and results cut to fit the context window. */
-async function oktaTools(mcp: MCPClient): Promise<Record<string, OktaTool>> {
-  const tools: Record<string, OktaTool> = {};
-  for (const [name, mcpTool] of Object.entries(await mcp.tools())) {
-    if (!isReadOnlyTool(name)) continue;
-    const description = summary(mcpTool.description as string | undefined);
-    tools[name] = {
-      brief: description.split(/(?<=\.)\s/)[0]!,
-      tool: dynamicTool({
-        description,
-        inputSchema: mcpTool.inputSchema,
-        execute: async (input, options) => {
-          let result: { content?: Array<{ type: string; text?: string }> };
-          try {
-            result = (await mcpTool.execute!(input as never, options)) as typeof result;
-          } catch (error) {
-            // The offscreen document closed or crashed mid-call; the next question reopens it.
-            if (error instanceof Error && error.message === 'Connection closed') {
-              throw new Error(`Okta's MCP server stopped. ${SEE_CONSOLE}`);
-            }
-            throw error;
-          }
-          const text = (result.content ?? []).map((c) => c.text ?? '').join('\n');
-          return text.length > MAX_TOOL_RESULT_CHARS
-            ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n… (truncated; use filters or a smaller limit)`
-            : text;
-        },
-      }),
-    };
-  }
-  return tools;
-}
+/** Whether a step's lookup failed, so the model may try once more. */
+const failed = (step: StepResult<ToolSet> | undefined) =>
+  step?.content.some(
+    (part) =>
+      part.type === 'tool-error' ||
+      (part.type === 'tool-result' && (part.output as { ok?: boolean } | undefined)?.ok === false),
+  ) ?? false;
 
 const describePage = (page: PageContext) =>
   [
@@ -134,47 +71,135 @@ const describePage = (page: PageContext) =>
 const questionText = (message: Message) =>
   message.parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
 
-/** The few Okta tools this question needs, chosen by the model from a one-line list. */
-async function pickTools(
-  tools: Record<string, OktaTool>,
-  message: Message,
-  abortSignal: AbortSignal,
-) {
-  const names = Object.keys(tools);
-  const page = message.metadata?.page;
-  const { output } = await generateText({
-    model: onDeviceModel(),
-    abortSignal,
-    output: Output.object({
-      schema: jsonSchema<{ tools: string[] }>({
-        type: 'object',
-        properties: {
-          tools: { type: 'array', items: { type: 'string', enum: names }, maxItems: MAX_TOOLS },
-        },
-        required: ['tools'],
-      }),
-    }),
-    prompt: [
-      `Pick up to ${MAX_TOOLS} tools needed to answer an Okta admin's question (none if no lookup is needed).`,
-      '',
-      ...names.map((name) => `- ${name}: ${tools[name]!.brief}`),
-      '',
-      ...(page ? [`The admin is on: ${page.title} (${page.url})`] : []),
-      `Question: ${questionText(message)}`,
-    ].join('\n'),
-  });
-  return output.tools.filter((name) => names.includes(name)).slice(0, MAX_TOOLS);
+type Part = TextStreamPart<ToolSet>;
+
+const textParts = (id: string, text: string): Part[] => [
+  { type: 'text-start', id },
+  { type: 'text-delta', id, text },
+  { type: 'text-end', id },
+];
+
+/** How @browser-ai/core has the model write a tool call. */
+const TOOL_CALL_FENCE = '```tool_call';
+
+/** The call a tool part belongs to. */
+const callId = (part: Part) =>
+  part.type === 'tool-input-start' ||
+  part.type === 'tool-input-delta' ||
+  part.type === 'tool-input-end'
+    ? part.id
+    : part.type === 'tool-call' || part.type === 'tool-result' || part.type === 'tool-error'
+      ? part.toolCallId
+      : undefined;
+
+/**
+ * The reply, with what Nano gets wrong tidied up:
+ * - calls to tools it wasn't offered are left out. On the answer step it often
+ *   writes another tool call instead of an answer, which only fails.
+ * - for a change request, it starts by saying the assistant can't make changes.
+ * - if it looked something up but wrote no answer, the lookup's summary is the answer.
+ * - a tool call it wrote but got wrong (it sometimes echoes the tool's schema) isn't
+ *   shown as text; with no answer at all, it says it couldn't look that up.
+ */
+async function* withFallbacks(stream: AsyncIterable<Part>, changeRequest: boolean) {
+  let summary: string | undefined;
+  let answered = false;
+  // A call's parts are held until it has a result, then sent, or dropped if the tool wasn't offered.
+  const calls = new Map<string, Part[]>();
+  // Text blocks are held until they show whether they're a botched tool call.
+  const texts = new Map<string, { parts: Part[]; text: string }>();
+  for await (const part of stream) {
+    if (part.type === 'text-start') {
+      texts.set(part.id, { parts: [part], text: '' });
+      continue;
+    }
+    const held = 'id' in part ? texts.get(part.id) : undefined;
+    if (held && (part.type === 'text-delta' || part.type === 'text-end')) {
+      held.parts.push(part);
+      if (part.type === 'text-delta') held.text += part.text;
+      const start = held.text.trimStart();
+      // Too short to tell yet.
+      if (TOOL_CALL_FENCE.startsWith(start) && part.type !== 'text-end') continue;
+      // A tool call it got wrong: left out.
+      if (start.startsWith(TOOL_CALL_FENCE)) {
+        if (part.type === 'text-end') texts.delete(part.id);
+        continue;
+      }
+      texts.delete(part.id);
+      if (held.text.trim()) answered = true;
+      yield* held.parts;
+      continue;
+    }
+    if (part.type === 'text-delta' && part.text.trim()) answered = true;
+    const id = callId(part);
+    if (id !== undefined && part.type !== 'tool-result' && part.type !== 'tool-error') {
+      calls.set(id, [...(calls.get(id) ?? []), part]);
+      continue;
+    }
+    if (part.type === 'tool-error' && NoSuchToolError.isInstance(part.error)) {
+      calls.delete(part.toolCallId);
+      continue;
+    }
+    if (id !== undefined) {
+      yield* calls.get(id) ?? [];
+      calls.delete(id);
+    }
+    if (part.type === 'finish' && !answered) {
+      yield* textParts(
+        'fallback',
+        summary ?? "Sorry, I couldn't look that up. Try asking another way.",
+      );
+    }
+    yield part;
+    if (part.type === 'start' && changeRequest) {
+      yield* textParts('read-only', "I can only read your org, so I can't make that change.\n\n");
+    }
+    if (part.type === 'tool-result') {
+      summary = (part.output as { summary?: string }).summary;
+      answered = false;
+    }
+  }
 }
+
+/** True once a page tool has run: the page is changing, so there's nothing more to say. */
+const openedPage = ({ steps }: { steps: Array<StepResult<ToolSet>> }) =>
+  steps
+    .at(-1)
+    ?.toolResults.some(
+      (r) =>
+        (PAGE_TOOLS as readonly string[]).includes(r.toolName) &&
+        (r.output as { ok?: boolean }).ok === true,
+    ) ?? false;
 
 export function createLocalChat() {
   const start: StartReply<AdminTab> = (messages, save, tab) => {
     const abort = new AbortController();
     let mcp: MCPClient | undefined;
+    // @browser-ai/core keeps one Prompt API session per model, and each step sends the
+    // whole conversation: a model per step keeps it from piling up twice. Each step's
+    // session is closed once the next starts, and the last when the reply ends.
+    const models: Array<ReturnType<typeof onDeviceModel>> = [];
+    const nextModel = () => {
+      models.forEach(closeSession);
+      models.push(onDeviceModel());
+      return models.at(-1)!;
+    };
 
     const result = (async () => {
+      const started = performance.now();
       mcp = await connectOktaMcp(tab);
-      const okta = await oktaTools(mcp);
-      const chosen = await pickTools(okta, messages.at(-1)!, abort.signal);
+      console.debug(`[on-device] MCP connected in ${Math.round(performance.now() - started)} ms`);
+      const last = messages.at(-1)!;
+      const question = questionText(last);
+      const page = last.metadata?.page;
+      const mcpTools = await mcp.tools();
+      console.debug(
+        `[on-device] MCP tools listed at ${Math.round(performance.now() - started)} ms`,
+      );
+      const tools = guideTools(mcpTools, page, question);
+      const offered = routeTools(question, page);
+      const changeRequest = WRITE_REQUEST.test(question);
+      const base = changeRequest ? readOnlyInstructions : instructions;
 
       // Only the latest message carries its page: older ones' would crowd out the answer.
       const recent = messages.slice(-MAX_HISTORY).map((message, i, all) =>
@@ -189,27 +214,34 @@ export function createLocalChat() {
           : message,
       );
 
-      return streamText({
-        model: onDeviceModel(),
-        instructions,
+      const reply = streamText({
+        model: nextModel(),
+        instructions: base,
         messages: await convertToModelMessages(recent, { ignoreIncompleteToolCalls: true }),
-        tools: {
-          ...Object.fromEntries(chosen.map((name) => [name, okta[name]!.tool])),
-          ...pageTools,
+        tools,
+        stopWhen: [isStepCount(MAX_STEPS), openedPage],
+        prepareStep: ({ stepNumber, steps }) => {
+          // Look up first; after a lookup, answer (one more try if it failed).
+          const lookUp = stepNumber === 0 || (stepNumber === 1 && failed(steps.at(-1)));
+          return {
+            model: stepNumber === 0 ? models.at(-1)! : nextModel(),
+            activeTools: lookUp ? offered : [],
+            instructions: lookUp ? base : base + ANSWER_NOW,
+          };
         },
-        stopWhen: isStepCount(MAX_STEPS),
-        // @browser-ai/core keeps one Prompt API session per model, and each step sends
-        // the whole conversation: a fresh model per step keeps it from piling up twice.
-        prepareStep: () => ({ model: onDeviceModel() }),
         abortSignal: abort.signal,
       });
+      return { reply, changeRequest };
     })();
 
     const stream = toUIMessageStream({
       stream: new ReadableStream({
         async start(controller) {
           try {
-            for await (const part of (await result).stream) controller.enqueue(part);
+            const { reply, changeRequest } = await result;
+            for await (const part of withFallbacks(reply.stream, changeRequest)) {
+              controller.enqueue(part);
+            }
           } catch (error) {
             controller.enqueue({ type: 'error', error });
           }
@@ -221,6 +253,7 @@ export function createLocalChat() {
       sendReasoning: false,
       onEnd: async ({ messages: final }) => {
         await save(final);
+        models.forEach(closeSession);
         await mcp?.close();
       },
       onError: (error) => {

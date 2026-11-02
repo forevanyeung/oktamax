@@ -87,11 +87,18 @@ export async function launchChrome(): Promise<EvalChrome> {
     throw new Error(`Chrome didn't start (is another Chrome using ${userDataDir}?)`);
   }
   const [port, path] = readFileSync(portFile, 'utf8').trim().split('\n');
-  const { id: extensionId } = (await browserCommand(
-    `ws://127.0.0.1:${port}${path}`,
-    'Extensions.loadUnpacked',
-    { path: extensionPath },
-  )) as { id: string };
+  const browserWs = `ws://127.0.0.1:${port}${path}`;
+  const load = async () =>
+    (
+      (await browserCommand(browserWs, 'Extensions.loadUnpacked', { path: extensionPath })) as {
+        id: string;
+      }
+    ).id;
+  // The profile keeps the extension from the last run, and loading it again keeps that
+  // version: install it afresh so the eval runs the current build.
+  const extensionId = await load();
+  await browserCommand(browserWs, 'Extensions.uninstall', { id: extensionId });
+  await load();
 
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const context = browser.contexts()[0]!;
