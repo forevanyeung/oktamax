@@ -74,6 +74,21 @@ The toolbar popup has these settings:
 - **Chat server URL**: where the assistant's server runs (default `http://localhost:8787`). Chrome
   asks for permission to reach it. Leave it empty to turn the assistant off.
 
+### Setting the chat server for your organization
+
+The chat server URL can be enforced by policy, so admins don't have to enter it. In the Google Admin
+console, go to **Devices › Chrome › Apps & extensions › Users & browsers**, select Okta Max, and
+under **Policy for extensions** paste:
+
+```json
+{ "chatServerUrl": "https://oktamax.example.com" }
+```
+
+An empty string turns the assistant off. A URL set this way overrides the popup setting, which then
+shows it read-only. Chrome doesn't ask for permission to reach it; the server's CORS policy already
+allows the extension. Other management tools (Intune, Jamf, Group Policy) can set the same
+`chatServerUrl` key; its schema is `extension/public/managed_schema.json`.
+
 Where Edit is an item of an **Actions** menu, a **View** item is added to the same menu (its tooltip
 says it comes from Okta Max). Where Okta leaves that menu out for read-only admins (Authenticators,
 authentication policy rules), an **Actions** menu with just the **View** item takes its place.
