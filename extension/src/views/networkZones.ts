@@ -1,4 +1,4 @@
-import { findItems } from '../content/dom';
+import { addActionsCell, findItems } from '../content/dom';
 import {
   checkbox,
   inline,
@@ -198,6 +198,7 @@ export const networkZonesProvider: ViewProvider = {
       anchor,
       scope,
       actions: scope.querySelector('.zone-actions'),
+      addActions: () => addActionsCell(scope),
       load: async () => networkZoneView(item),
     }));
   },

@@ -13,6 +13,17 @@ export interface ViewTarget {
    * section's button bar). Okta renders some of these empty for read-only admins.
    */
   actions?: Element | null;
+  /**
+   * Recreates that place where Okta leaves it out entirely for read-only admins (a table
+   * without an actions column, a card without its actions section). Only called when the
+   * page shows neither an Edit control nor `actions`.
+   */
+  addActions?: () => Element;
+  /**
+   * Okta offers Edit as an item of an "Actions" menu here (`icons`: its items have icons).
+   * Read-only admins get no menu, so a menu with a View item goes in `actions` instead.
+   */
+  menu?: { icons: boolean };
   /** The area Okta renders its Edit control in. If it has one, no view button is needed. */
   scope: Element;
   /** Fetch the data and describe the read-only form. Only called when the button is clicked. */

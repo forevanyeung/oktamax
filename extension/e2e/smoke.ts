@@ -2,7 +2,7 @@
  * End-to-end smoke test: loads the built extension into Chromium, serves a
  * mock admin console page plus API fixtures, and checks that
  *  - view buttons appear only where there is no Edit control, in the row's
- *    actions cell when it has one,
+ *    actions cell (adding one to rows Okta renders without it),
  *  - the dialog renders read-only fields,
  *  - the views never send anything but GET,
  *  - the API console sends requests and shows their responses.
@@ -25,6 +25,12 @@ const pages: Record<string, string> = {
     <table>
       <tr><td><a href="#">Office</a></td><td>IP</td><td><button>Edit</button></td></tr>
       <tr><td><a href="#">Blocked countries</a></td><td>Dynamic</td><td><div class="zone-actions"></div></td></tr>
+    </table>
+    <!-- Like the console: full-width tables and a reset that lets SVGs shrink. -->
+    <style>svg { max-width: 100% }</style>
+    <table style="width: 100%">
+      <thead><tr><th>Name</th><th>Zone type</th></tr></thead>
+      <tbody><tr><td><a href="#">Guest Wi-Fi</a></td><td>IP</td></tr></tbody>
     </table>`,
   '/admin/app/acme_app_1/instance/0oa1/': `
     <h1>Acme</h1>
@@ -65,6 +71,7 @@ const api: Record<string, unknown> = {
       locations: [{ country: 'KP' }],
       asns: ['64496'],
     },
+    { id: 'nzo3', name: 'Guest Wi-Fi', type: 'IP', status: 'ACTIVE' },
   ],
   '/api/v1/apps/0oa1': {
     id: '0oa1',
@@ -165,6 +172,28 @@ async function main() {
     await viewButton(page, 'zone:nzo2').evaluate((el) => el.parentElement?.className),
     'zone-actions',
     "view button goes in the row's actions cell",
+  );
+  await viewButton(page, 'zone:nzo3').waitFor();
+  assert.deepEqual(
+    await viewButton(page, 'zone:nzo3').evaluate((el) => {
+      const cell = el.parentElement!;
+      const table = cell.closest('table')!;
+      return [
+        cell.tagName,
+        cell === cell.parentElement!.lastElementChild,
+        table.rows[0]!.cells.length,
+      ];
+    }),
+    ['TD', true, 3],
+    'rows without an actions cell get one, with a matching header cell',
+  );
+  // The added cell is as narrow as possible; the eye must not be squeezed away.
+  assert.equal(
+    await viewButton(page, 'zone:nzo3').evaluate(
+      (el) => el.querySelector('svg')!.getBoundingClientRect().width,
+    ),
+    15,
+    'the view icon keeps its size in a narrow actions cell',
   );
 
   await viewButton(page, 'zone:nzo2').click();

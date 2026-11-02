@@ -1,4 +1,4 @@
-import { findItems, headingTexts } from '../../content/dom';
+import { createActions, findItems, headingTexts } from '../../content/dom';
 import type { FormView } from '../../form/schema';
 import { get, getAll } from '../../okta/api';
 import type { Policy, PolicyRule, PolicyType } from '../../okta/types';
@@ -57,13 +57,21 @@ export const policiesProvider: ViewProvider = {
     const ruleView = RULE_VIEWS[policy.type] ?? genericRuleView;
 
     // The policy itself (name, description, groups, password settings) is shown on the page.
-    return findItems(rules, (r) => r.name).map(({ item, anchor, scope }) => ({
-      key: `policy-rule:${item.id}`,
-      title: 'View Rule',
-      anchor,
-      scope,
-      actions: scope.querySelector('[data-type="control-buttons"], .card--header-action'),
-      load: () => ruleView(item),
-    }));
+    return findItems(rules, (r) => r.name).map(({ item, anchor, scope }) => {
+      // Rule cards (authentication policies) end with an "Actions" section in the Actions column.
+      const card = scope.querySelector('article.card');
+      return {
+        key: `policy-rule:${item.id}`,
+        title: 'View Rule',
+        anchor,
+        scope,
+        actions: scope.querySelector('[data-type="control-buttons"], .card--header-action'),
+        addActions: card
+          ? () => card.appendChild(createActions('section', 'card--header-action'))
+          : undefined,
+        menu: card ? { icons: false } : undefined,
+        load: () => ruleView(item),
+      };
+    });
   },
 };

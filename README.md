@@ -75,7 +75,8 @@ The toolbar popup has these settings:
   asks for permission to reach it. Leave it empty to turn the assistant off.
 
 Where Edit is an item of an **Actions** menu, a **View** item is added to the same menu (its tooltip
-says it comes from Okta Max).
+says it comes from Okta Max). Where Okta leaves that menu out for read-only admins (Authenticators,
+authentication policy rules), an **Actions** menu with just the **View** item takes its place.
 
 ## What's covered
 
