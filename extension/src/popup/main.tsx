@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { loadSettings, saveSettings, watchDarkMode, type Settings, type Theme } from '../settings';
+import {
+  loadManagedSettings,
+  loadSettings,
+  saveSettings,
+  watchDarkMode,
+  type Settings,
+  type Theme,
+} from '../settings';
 
 /** The service worker needs host permission to reach the chat server. */
 const requestServerAccess = (url: string) =>
@@ -20,13 +27,16 @@ const Popup = () => {
   const [serverUrl, setServerUrl] = useState('');
   const [serverError, setServerError] = useState<string>();
   const [saved, setSaved] = useState(false);
+  const [managed, setManaged] = useState<Partial<Settings>>({});
 
   useEffect(() => {
     void loadSettings().then((s) => {
       setSettings(s);
       setServerUrl(s.chatServerUrl);
     });
+    void loadManagedSettings().then(setManaged);
   }, []);
+  const serverManaged = managed.chatServerUrl !== undefined;
 
   const update = (change: Partial<Settings>) => {
     setSettings((current) => current && { ...current, ...change });
@@ -115,20 +125,25 @@ const Popup = () => {
           }}
         >
           <label htmlFor="server-url">Chat server URL</label>
-          <small>Leave empty to turn the assistant off.</small>
+          <small>
+            {serverManaged ? 'Set by your organization.' : 'Leave empty to turn the assistant off.'}
+          </small>
           <div>
             <input
               id="server-url"
               type="url"
               value={serverUrl}
               placeholder="https://oktamax.example.com"
+              disabled={serverManaged}
               aria-invalid={!!serverError}
               onChange={(e) => {
                 setServerUrl(e.target.value);
                 setSaved(false);
               }}
             />
-            <button type="submit">{saved ? 'Saved' : 'Save'}</button>
+            <button type="submit" hidden={serverManaged}>
+              {saved ? 'Saved' : 'Save'}
+            </button>
           </div>
           {serverError && <small className="error">{serverError}</small>}
         </form>

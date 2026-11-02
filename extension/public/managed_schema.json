@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "chatServerUrl": {
+      "title": "Chat server URL",
+      "description": "Base URL of the Okta Max chat server, e.g. https://oktamax.example.com. An empty string turns the assistant off. When set, admins can't change it in the popup.",
+      "type": "string"
+    }
+  }
+}

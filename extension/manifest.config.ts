@@ -37,6 +37,8 @@ export default defineManifest({
   ],
   // The chat server's origin, requested from the popup when it's configured.
   optional_host_permissions: ['https://*/*'],
+  // Settings an organization can enforce through policy (chrome.storage.managed).
+  storage: { managed_schema: 'managed_schema.json' },
   background: {
     service_worker: 'src/background/index.ts',
     type: 'module',
