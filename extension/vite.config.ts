@@ -37,8 +37,12 @@ export default defineConfig(({ command }) => ({
     // Everything ships inside the extension package, so large chunks don't cost network time.
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
-      // Not in the manifest: the service worker opens it with chrome.offscreen.
-      input: { offscreen: 'src/offscreen/index.html' },
+      input: {
+        // Not in the manifest: the service worker opens it with chrome.offscreen.
+        offscreen: 'src/offscreen/index.html',
+        // Not in the manifest either: the popup opens it in a tab.
+        model: 'src/model/index.html',
+      },
     },
   },
   test: {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { onDeviceModel } from '../onDeviceModel';
+import { openModelPage, useModelAvailability } from '../model/availability';
 import {
   loadSettings,
   saveSettings,
@@ -27,29 +27,11 @@ const ASSISTANTS: Array<[AssistantMode, string]> = [
 ];
 
 /**
- * Chrome's built-in model: whether it can run here, and a button to download it.
- * The download has to start from a click, so it's here rather than in the chat.
+ * Chrome's built-in model: whether it's ready, kept up to date while the popup is
+ * open. Downloading happens in a tab (`src/model/`), which outlives the popup.
  */
 const ModelStatus = () => {
-  const [availability, setAvailability] = useState<string>();
-  const [progress, setProgress] = useState<number>();
-  const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    void onDeviceModel()
-      .availability()
-      .then(setAvailability, (e: unknown) => setAvailability(`unavailable (${String(e)})`));
-  }, []);
-
-  const download = async () => {
-    setError(undefined);
-    try {
-      await onDeviceModel().createSessionWithProgress(setProgress);
-      setAvailability('available');
-    } catch (e) {
-      setError(String(e));
-    }
-  };
+  const [availability] = useModelAvailability();
 
   if (!availability) return null;
   return (
@@ -63,15 +45,15 @@ const ModelStatus = () => {
       ) : (
         <>
           <small>
-            Chrome’s built-in model (Gemini Nano) needs to be downloaded once
-            {progress !== undefined && `: ${Math.round(progress * 100)}%`}.
+            {availability === 'downloading'
+              ? 'Chrome is downloading its built-in model (Gemini Nano)…'
+              : 'Chrome’s built-in model (Gemini Nano) needs to be downloaded once.'}
           </small>
-          <button type="button" onClick={() => void download()} disabled={progress !== undefined}>
-            Download
+          <button type="button" onClick={() => void openModelPage()}>
+            {availability === 'downloading' ? 'Show progress' : 'Download'}
           </button>
         </>
       )}
-      {error && <small className="error">{error}</small>}
     </div>
   );
 };

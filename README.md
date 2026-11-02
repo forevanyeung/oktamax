@@ -317,8 +317,11 @@ Admin console tab            Service worker                        Offscreen doc
 
 - **The model** is Chrome's built-in Gemini Nano (the Prompt API, stable for extensions since
   Chrome 138), used through `@browser-ai/core`. Questions, page text and Okta data never leave the
-  browser. The popup has a **Download** button for the model, because Chrome only starts the download
-  on a click.
+  browser. Chrome downloads it once for the whole browser, and every site and extension that uses
+  it shares that copy. Chrome only starts the download on a click, so the popup's **Download** button
+  opens a tab (`extension/src/model/`) that starts it and shows progress: a popup closes as soon as
+  it loses focus, taking the download with it. The popup shows the model's status, and
+  `chrome://on-device-internals` shows Chrome's own.
 - **Okta's MCP server** is the same `okta-mcp-server` 1.1.7, unmodified. It runs on Pyodide in an
   offscreen document (`extension/src/offscreen/`). The differences from the hosted server are:
   - There's no stdio in a browser, so the bridge feeds MCP JSON-RPC to the server over in-memory
