@@ -1,35 +1,32 @@
 {
   "name": "oktamax",
-  "version": "0.1.0",
   "private": true,
-  "description": "Chrome extension: read-only 'View' dialogs in the Okta admin console where the Edit button is missing.",
+  "workspaces": [
+    "extension",
+    "server",
+    "shared"
+  ],
   "type": "module",
   "scripts": {
-    "dev": "vp dev",
-    "build": "vp build",
-    "icons": "node scripts/icons.mjs",
+    "build": "npm run build --workspaces --if-present",
     "check": "vp check",
-    "test": "vp test",
-    "test:e2e": "vp build && vpx e2e/smoke.ts",
-    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p e2e"
-  },
-  "dependencies": {
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e -w @oktamax/extension",
+    "dev": "vp run -r --parallel dev",
+    "dev:server": "npm run dev -w @oktamax/server",
+    "dev:extension": "npm run dev -w @oktamax/extension"
   },
   "devDependencies": {
-    "@crxjs/vite-plugin": "^3.0.0",
-    "@types/chrome": "^0.3.7",
-    "@types/node": "^26.6.6",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "playwright": "^1.64.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "typescript": "^7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@1.4.0",
     "vite-plus": "1.4.0"
   },
   "overrides": {
+    "react": "$react",
+    "react-dom": "$react-dom",
     "vite": "$vite"
   }
 }
