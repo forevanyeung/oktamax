@@ -523,6 +523,36 @@ The seed only creates new objects, and scopes its policies to a test group or te
 changes are Okta "protected actions", so the scripts answer the step-up pop-up with the admin's
 password and TOTP code.
 
+### Evals for the on-device assistant
+
+`extension/evals/` scores the on-device assistant with the real Gemini Nano, in Google Chrome
+rather than Playwright's Chromium, which has no Nano. Okta's MCP server runs on Pyodide as in the
+extension, and the org is the live one in `.env`, read as the read-only admin.
+
+```sh
+cd extension
+npm run build && npm run evals                  # every case
+npm run evals -- user-count saml-apps           # some of them
+```
+
+- **Chrome:** the runner starts Chrome with its own data folder, `~/.cache/oktamax-evals/chrome`
+  (or set `EVAL_CHROME_PROFILE`). Chrome won't allow remote debugging on its default folder, and
+  branded Chrome ignores `--load-extension`, so the extension is loaded over the DevTools protocol
+  (`Extensions.loadUnpacked`).
+- **The model:** the first run clicks Download on the extension's model page, which takes a few
+  minutes. The model stays in that folder for later runs, as does the Okta session.
+- **Cases:** `evals/cases.ts` gives each question the page it's asked on, the tools a good answer
+  uses, and the facts its answer must contain. The facts are read from the org when the eval runs,
+  so they stay right as the org changes.
+- **Measured:**
+  - which tools were called, with what input, and whether they failed;
+  - whether the answer contains the facts;
+  - total time, and the time and context size of each Prompt API call (timed in the service
+    worker).
+
+  A table goes to the terminal and the details, including each answer, to
+  `evals/results/<time>.json`.
+
 ## Known limitations
 
 - The field labels and their order follow Okta's edit dialogs as closely as possible and have been

@@ -12,8 +12,9 @@
     "pyodide": "node scripts/pyodide.mjs",
     "check": "vp check",
     "test": "vp test",
+    "evals": "vpx evals/run.ts",
     "test:e2e": "npm run build && vpx e2e/smoke.ts && vpx e2e/chat.ts && vpx e2e/onDevice.ts",
-    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p e2e"
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p e2e && tsc --noEmit -p evals"
   },
   "dependencies": {
     "@ai-sdk/mcp": "^2.0.88",

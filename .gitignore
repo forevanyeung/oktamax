@@ -5,6 +5,7 @@ extension/e2e/*.png
 .env
 extension/e2e/.profiles
 extension/e2e/live
+extension/evals/results
 *.zip
 __pycache__
 extension/public/pyodide
