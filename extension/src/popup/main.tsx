@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { createRoot } from 'react-dom/client';
 
 import { openModelPage, useModelAvailability } from '../model/availability';
+import { renderRoot } from '../renderRoot';
 import {
   loadManagedSettings,
   loadSettings,
@@ -214,4 +214,4 @@ const Popup = () => {
   );
 };
 
-createRoot(document.getElementById('root')!).render(<Popup />);
+renderRoot(<Popup />);

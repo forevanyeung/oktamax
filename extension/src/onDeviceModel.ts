@@ -1,7 +1,11 @@
 /** Chrome's built-in model (Gemini Nano, through the Prompt API), for the on-device assistant. */
 import { browserAI } from '@browser-ai/core';
 
-export const onDeviceModel = () => browserAI();
+/** The assistant reads and answers in English; without it, Chrome warns on every request. */
+const ENGLISH = [{ type: 'text' as const, languages: ['en'] }];
+
+export const onDeviceModel = () =>
+  browserAI('text', { expectedInputs: ENGLISH, expectedOutputs: ENGLISH });
 
 type OnDeviceModel = ReturnType<typeof onDeviceModel>;
 
