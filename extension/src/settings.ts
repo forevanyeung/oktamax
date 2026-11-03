@@ -10,7 +10,10 @@ export interface Settings {
   theme: Theme;
   /** Show the API console drawer at the bottom of the admin console. */
   showApiConsole: boolean;
-  /** Base URL of the chat server, e.g. https://oktamax.example.com. Empty disables the chat. */
+  /**
+   * Base URL of the chat server, e.g. https://oktamax.example.com. Empty disables the chat.
+   * Can be enforced by policy (see `loadManagedSettings`).
+   */
   chatServerUrl: string;
   assistant: AssistantMode;
 }
@@ -33,14 +36,30 @@ export const ON_DEVICE_CHAT_URL = 'https://on-device.oktamax.invalid';
 export const chatUrl = (settings: Settings) =>
   settings.assistant === 'onDevice' ? ON_DEVICE_CHAT_URL : settings.chatServerUrl;
 
+/**
+ * Settings enforced by the organization's policy (e.g. Google Workspace admin's "Policy for
+ * extensions"), per `public/managed_schema.json`. They override what the admin picked.
+ */
+export const loadManagedSettings = async (): Promise<Partial<Settings>> => {
+  try {
+    return (await chrome.storage.managed.get()) as Partial<Settings>;
+  } catch {
+    return {}; // no policy store (e.g. some unmanaged or non-Chrome browsers)
+  }
+};
+
 export const loadSettings = async (): Promise<Settings> =>
-  ({ ...defaults, ...(await chrome.storage.sync.get(defaults)) }) as Settings;
+  ({
+    ...defaults,
+    ...(await chrome.storage.sync.get(defaults)),
+    ...(await loadManagedSettings()),
+  }) as Settings;
 
 export const saveSettings = (settings: Partial<Settings>) => chrome.storage.sync.set(settings);
 
 export const onSettingsChanged = (callback: (settings: Settings) => void) =>
   chrome.storage.onChanged.addListener(async (_changes, area) => {
-    if (area === 'sync') callback(await loadSettings());
+    if (area === 'sync' || area === 'managed') callback(await loadSettings());
   });
 
 const systemDark = () => matchMedia('(prefers-color-scheme: dark)');

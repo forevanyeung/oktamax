@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 
 import { openModelPage, useModelAvailability } from '../model/availability';
 import {
+  loadManagedSettings,
   loadSettings,
   saveSettings,
   watchDarkMode,
@@ -65,13 +66,16 @@ const Popup = () => {
   const [serverUrl, setServerUrl] = useState('');
   const [serverError, setServerError] = useState<string>();
   const [saved, setSaved] = useState(false);
+  const [managed, setManaged] = useState<Partial<Settings>>({});
 
   useEffect(() => {
     void loadSettings().then((s) => {
       setSettings(s);
       setServerUrl(s.chatServerUrl);
     });
+    void loadManagedSettings().then(setManaged);
   }, []);
+  const serverManaged = managed.chatServerUrl !== undefined;
 
   const update = (change: Partial<Settings>) => {
     setSettings((current) => current && { ...current, ...change });
@@ -170,9 +174,7 @@ const Popup = () => {
       )}
       {settings?.assistant === 'onDevice' && (
         <div className="server">
-          <small>
-            Runs in Chrome, with Client-side AI.
-          </small>
+          <small>Runs in Chrome, with Client-side AI.</small>
           <ModelStatus />
         </div>
       )}
@@ -185,20 +187,25 @@ const Popup = () => {
           }}
         >
           <label htmlFor="server-url">Chat server URL</label>
-          <small>Leave empty to turn the assistant off.</small>
+          <small>
+            {serverManaged ? 'Set by your organization.' : 'Leave empty to turn the assistant off.'}
+          </small>
           <div>
             <input
               id="server-url"
               type="url"
               value={serverUrl}
               placeholder="https://oktamax.example.com"
+              disabled={serverManaged}
               aria-invalid={!!serverError}
               onChange={(e) => {
                 setServerUrl(e.target.value);
                 setSaved(false);
               }}
             />
-            <button type="submit">{saved ? 'Saved' : 'Save'}</button>
+            <button type="submit" hidden={serverManaged}>
+              {saved ? 'Saved' : 'Save'}
+            </button>
           </div>
           {serverError && <small className="error">{serverError}</small>}
         </form>

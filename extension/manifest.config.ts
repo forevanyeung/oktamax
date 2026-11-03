@@ -43,6 +43,8 @@ export default defineManifest({
     // Still no eval or remote code: every .wasm file is part of the extension.
     extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
   },
+  // Settings an organization can enforce through policy (chrome.storage.managed).
+  storage: { managed_schema: 'managed_schema.json' },
   background: {
     service_worker: 'src/background/index.ts',
     type: 'module',
