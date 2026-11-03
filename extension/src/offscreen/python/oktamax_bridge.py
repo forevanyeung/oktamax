@@ -12,6 +12,7 @@ before it starts, so a keyring backend hands it a placeholder that never expires
 import asyncio
 import base64
 import json
+import logging
 import os
 import sys
 
@@ -68,6 +69,10 @@ def load(env):
 
     # What okta_mcp_server.server.main() does, minus mcp.run(): register every tool.
     from okta_mcp_server.server import mcp
+
+    # FastMCP sets up logging at INFO, which logs every request ("Processing request of type ...").
+    logging.getLogger().setLevel(os.environ.get("OKTA_LOG_LEVEL", "WARNING"))
+
     from okta_mcp_server.tools.applications import applications  # noqa: F401
     from okta_mcp_server.tools.customization.brands import brands  # noqa: F401
     from okta_mcp_server.tools.customization.custom_domains import custom_domains  # noqa: F401

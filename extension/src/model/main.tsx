@@ -5,9 +5,9 @@
  * click, so the page has its own button.
  */
 import { useState } from 'react';
-import { createRoot } from 'react-dom/client';
 
 import { onDeviceModel } from '../onDeviceModel';
+import { renderRoot } from '../renderRoot';
 import { watchDarkMode } from '../settings';
 import { openChromeModelStatus, useModelAvailability } from './availability';
 
@@ -86,4 +86,4 @@ const ModelPage = () => {
   );
 };
 
-createRoot(document.getElementById('root')!).render(<ModelPage />);
+renderRoot(<ModelPage />);

@@ -106,6 +106,7 @@ async function* withFallbacks(stream: AsyncIterable<Part>, changeRequest: boolea
   let answered = false;
   // A call's parts are held until it has a result, then sent, or dropped if the tool wasn't offered.
   const calls = new Map<string, Part[]>();
+  const unoffered = new Set<string>();
   // Text blocks are held until they show whether they're a botched tool call.
   const texts = new Map<string, { parts: Part[]; text: string }>();
   for await (const part of stream) {
@@ -131,13 +132,16 @@ async function* withFallbacks(stream: AsyncIterable<Part>, changeRequest: boolea
       continue;
     }
     if (part.type === 'text-delta' && part.text.trim()) answered = true;
+    // The call carries the NoSuchToolError; its tool-error only has the message.
+    if (part.type === 'tool-call' && part.invalid && NoSuchToolError.isInstance(part.error)) {
+      calls.delete(part.toolCallId);
+      unoffered.add(part.toolCallId);
+      continue;
+    }
+    if (part.type === 'tool-error' && unoffered.has(part.toolCallId)) continue;
     const id = callId(part);
     if (id !== undefined && part.type !== 'tool-result' && part.type !== 'tool-error') {
       calls.set(id, [...(calls.get(id) ?? []), part]);
-      continue;
-    }
-    if (part.type === 'tool-error' && NoSuchToolError.isInstance(part.error)) {
-      calls.delete(part.toolCallId);
       continue;
     }
     if (id !== undefined) {

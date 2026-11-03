@@ -7,6 +7,8 @@
  * Chromium for testing has no Gemini Nano, so the Prompt API (`LanguageModel`)
  * is replaced in the service worker by a scripted stand-in: it calls find_users,
  * calls it the way @browser-ai/core asks models to, and answers from its result.
+ * Like Nano, it first calls find_users again when told to answer, which the reply
+ * leaves out without logging an error.
  * What it checks is everything around the model: tool selection, the MCP round
  * trip through Python, the Okta request sent by the tab with the session cookie,
  * and the reply streaming into the panel.
@@ -25,16 +27,33 @@ const extensionPath = resolve(import.meta.dirname, '../dist');
 
 /**
  * Stands in for Chrome's `LanguageModel` (Prompt API), as @browser-ai/core uses it.
- * Runs in the service worker; records each prompt's size.
+ * Runs in the service worker; records each prompt's size, the options Chrome is
+ * asked for, and what the worker logs as an error or warning.
  */
 function installScriptedModel() {
   const prompts: number[] = [];
+  const options: unknown[] = [];
+  const logged: string[] = [];
+  for (const level of ['error', 'warn'] as const) {
+    const log = console[level].bind(console);
+    console[level] = (...args: unknown[]) => {
+      logged.push(args.map(String).join(' '));
+      log(...args);
+    };
+  }
   const text = (messages: Array<{ content: unknown }>) => JSON.stringify(messages);
-  const reply = (messages: Array<{ content: unknown }>) => {
-    const all = text(messages);
-    const login = /locked@example\.com/.exec(all);
-    if (login) return `One user is locked out: **${login[0]}**.`;
-    return '```tool_call\n{"name": "find_users", "arguments": {"status": "LOCKED_OUT"}}\n```';
+  const findUsers =
+    '```tool_call\n{"name": "find_users", "arguments": {"status": "LOCKED_OUT"}}\n```';
+  let strayed = false;
+  const reply = (messages: Array<{ content: unknown }>, initial: unknown) => {
+    const login = /locked@example\.com/.exec(text(messages));
+    if (!login) return findUsers;
+    // Told to answer, Nano often calls the tool again first.
+    if (!strayed && JSON.stringify(initial).includes("Don't call any tools")) {
+      strayed = true;
+      return findUsers;
+    }
+    return `One user is locked out: **${login[0]}**.`;
   };
   class Session {
     contextWindow = 6144;
@@ -46,11 +65,11 @@ function installScriptedModel() {
     destroy() {}
     async prompt(messages: Array<{ content: unknown }>) {
       prompts.push(text(messages).length + JSON.stringify(this.initial ?? null).length);
-      return reply(messages);
+      return reply(messages, this.initial);
     }
     promptStreaming(messages: Array<{ content: unknown }>) {
       prompts.push(text(messages).length + JSON.stringify(this.initial ?? null).length);
-      const words = reply(messages).split(/(?<=\s)/);
+      const words = reply(messages, this.initial).split(/(?<=\s)/);
       return new ReadableStream<string>({
         async pull(controller) {
           await new Promise((r) => setTimeout(r, 20));
@@ -63,11 +82,16 @@ function installScriptedModel() {
   }
   Object.assign(globalThis, {
     LanguageModel: {
-      availability: async () => 'available',
+      availability: async (asked: unknown) => (options.push(asked), 'available'),
       params: async () => ({ defaultTemperature: 1, defaultTopK: 3, maxTopK: 8 }),
-      create: async (options: { initialPrompts?: unknown }) => new Session(options?.initialPrompts),
+      create: async (asked: { initialPrompts?: unknown }) => {
+        options.push(asked);
+        return new Session(asked?.initialPrompts);
+      },
     },
     oktamaxPrompts: prompts,
+    oktamaxOptions: options,
+    oktamaxLogged: logged,
   });
 }
 
@@ -153,6 +177,17 @@ async function main() {
   );
   console.log('Prompt sizes (characters):', prompts);
   assert.ok(Math.max(...prompts) < 6144 * 4, 'prompts fit in the context window');
+
+  const { asked, logged } = await worker.evaluate(() => {
+    const g = globalThis as unknown as { oktamaxOptions: unknown[]; oktamaxLogged: string[] };
+    return { asked: g.oktamaxOptions, logged: g.oktamaxLogged };
+  });
+  // Chrome warns about any request that doesn't say which language it answers in.
+  const english = [{ type: 'text', languages: ['en'] }];
+  for (const options of asked) {
+    assert.deepEqual((options as { expectedOutputs?: unknown }).expectedOutputs, english);
+  }
+  assert.deepEqual(logged, [], 'the worker logged no errors or warnings');
 
   await context.close();
   console.log('e2e on-device test passed');
