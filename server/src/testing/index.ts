@@ -13,6 +13,9 @@ import { OktaMcpProcessPool } from '../mcp/processPool';
 
 export const TEST_ORG = 'https://acme.okta.com';
 export const TEST_CLIENT_ID = '0oatestclient';
+/** A second org on the same server (OKTA_ORGS in the tests). Its admins' tokens start with `other-`. */
+export const OTHER_ORG = 'https://other.okta.com';
+export const OTHER_CLIENT_ID = '0oaotherclient';
 const READ = 'okta.users.read okta.groups.read';
 /** Access tokens the fake Okta accepts. `exp` is minutes from now. */
 export const TEST_USERS: Record<
@@ -30,24 +33,56 @@ export const TEST_USERS: Record<
   'token-expiring': { uid: '00ucat', username: 'cat@example.com', scope: READ, exp: 1 },
 };
 
-/** Route fetches to `TEST_ORG` to a fake Okta; everything else goes out for real. Returns the API calls made. */
-export function mockOkta(): string[] {
-  const calls: string[] = [];
+/**
+ * Okta's sign-in codes and refresh tokens: each gives that user's token
+ * (`okta-code-ada` and `refresh-ada` give `token-ada`).
+ */
+const tokenFor = (form: URLSearchParams) =>
+  form.get('grant_type') === 'authorization_code'
+    ? form.get('code')?.replace(/^okta-code-/, 'token-')
+    : form.get('refresh_token')?.replace(/^refresh-/, 'token-');
+
+/**
+ * Route fetches to `TEST_ORG` and `OTHER_ORG` to a fake Okta; everything else goes
+ * out for real. Returns the API calls made, and the token requests in `tokenRequests`.
+ */
+export function mockOkta(): string[] & { tokenRequests: URLSearchParams[] } {
+  const calls = Object.assign([] as string[], { tokenRequests: [] as URLSearchParams[] });
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : input);
-    if (url.origin !== TEST_ORG) return realFetch(input, init);
+    if (url.origin !== TEST_ORG && url.origin !== OTHER_ORG) return realFetch(input, init);
+    const other = url.origin === OTHER_ORG;
+    const clientId = other ? OTHER_CLIENT_ID : TEST_CLIENT_ID;
+    const form = new URLSearchParams(String(init?.body));
 
     if (url.pathname === '/oauth2/v1/introspect') {
-      const token = new URLSearchParams(String(init?.body)).get('token') ?? '';
-      const user = TEST_USERS[token];
-      if (!user) return Response.json({ active: false });
+      const token = form.get('token') ?? '';
+      // Each org only knows its own admins' tokens.
+      const user =
+        token.startsWith('other-') === other ? TEST_USERS[token.replace(/^other-/, '')] : undefined;
+      if (!user || form.get('client_id') !== clientId) return Response.json({ active: false });
       const { exp = 60, ...claims } = user;
       return Response.json({
         active: true,
-        client_id: TEST_CLIENT_ID,
+        client_id: clientId,
         exp: Math.floor(Date.now() / 1000) + exp * 60,
         ...claims,
+      });
+    }
+    if (url.pathname === '/oauth2/v1/token') {
+      calls.tokenRequests.push(form);
+      const token = tokenFor(form);
+      if (!token || !TEST_USERS[token] || form.get('client_id') !== clientId) {
+        return Response.json({ error: 'invalid_grant' }, { status: 400 });
+      }
+      return Response.json({
+        access_token: other ? `other-${token}` : token,
+        token_type: 'Bearer',
+        expires_in: 3600,
+        scope: TEST_USERS[token].scope,
+        refresh_token: token.replace(/^token-/, 'refresh-'),
+        id_token: 'not-for-clients',
       });
     }
     calls.push(`${init?.method ?? 'GET'} ${url.pathname}${url.search}`);
@@ -142,6 +177,4 @@ export const fakeOktaMcpPool = () =>
     ...config.oktaMcp,
     command: process.execPath,
     args: [fileURLToPath(new URL('./fakeOktaMcpServer.ts', import.meta.url))],
-    oktaOrgUrl: TEST_ORG,
-    oktaClientId: TEST_CLIENT_ID,
   });

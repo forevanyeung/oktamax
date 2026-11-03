@@ -23,9 +23,9 @@ export type WorkerRequest = { type: 'oktamax:signIn' } | { type: 'oktamax:authSt
 /** Worker → content script, via `chrome.tabs.sendMessage`: an Okta API GET for the on-device assistant (`content/oktaGet.ts`). */
 export type TabRequest = { type: 'oktamax:oktaGet'; path: string };
 
-/** What the chat can do. The org URL is the Okta org the chat server serves; the chat only appears on that org's admin console. */
+/** What the chat can do. The org URL is the Okta org of the admin console the chat is on. */
 export type AuthStatus =
-  /** No chat server URL: the assistant is turned off. */
+  /** No chat server URL (the assistant is turned off), or the server doesn't serve this org. */
   | { state: 'off' }
   /** The chat server can't be reached (in production builds). */
   | { state: 'unreachable'; serverUrl: string; error: string }

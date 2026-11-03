@@ -17,11 +17,7 @@ const model =
         credentialProvider: fromNodeProviderChain(),
       })(config.model.modelId);
 
-const oktaMcp = new OktaMcpProcessPool({
-  ...config.oktaMcp,
-  oktaOrgUrl: config.oktaOrgUrl,
-  oktaClientId: config.oktaClientId,
-});
+const oktaMcp = new OktaMcpProcessPool(config.oktaMcp);
 
 const app = createApp({
   oktaMcp,
@@ -32,13 +28,15 @@ const app = createApp({
 
 const server = serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
   console.log(`oktamax server listening on http://localhost:${port}`);
-  console.log(`  Okta org:  ${config.oktaOrgUrl}`);
+  const base = config.publicUrl ?? `http://localhost:${port}`;
+  for (const org of config.orgs)
+    console.log(`  Okta org:  ${org.url}  MCP: ${base}/mcp/${org.host}`);
   const where =
     config.model.provider === 'anthropic' ? 'Anthropic API' : `Bedrock, ${config.model.region}`;
   console.log(`  Model:     ${config.model.modelId} (${where})`);
   console.log(`  Okta MCP:  ${config.oktaMcp.command} ${config.oktaMcp.args.join(' ')}`);
   // Have okta-mcp-server (with uvx, its download) ready before the first question.
-  oktaMcp.warmUp().then(
+  oktaMcp.warmUp(config.orgs[0]!).then(
     (ms) => console.log(`  Okta MCP:  ready (${(ms / 1000).toFixed(1)}s)`),
     (error) => console.error(`  Okta MCP:  failed to start: ${error}`),
   );

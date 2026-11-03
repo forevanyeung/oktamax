@@ -29,10 +29,15 @@ export interface SendMessageBody<Message> {
   message: Message;
 }
 
-/** `GET /api/config`: public settings the extension needs before signing in. */
-export interface ServerConfig {
+/** An org the chat server serves, and the OIDC app its admins sign in with. */
+export interface OrgConfig {
   oktaOrgUrl: string;
   oktaClientId: string;
+}
+
+/** `GET /api/config`: public settings the extension needs before signing in. */
+export interface ServerConfig {
+  orgs: OrgConfig[];
 }
 
 /**

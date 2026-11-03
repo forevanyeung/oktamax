@@ -8,19 +8,41 @@ import { requireAuth } from './auth';
 import { createChatRoutes, type ChatDeps } from './chat/routes';
 import { config } from './config';
 import { handleMcpRequest } from './mcp/gateway';
+import { createOAuthRoutes, signInChallenge } from './mcp/oauth';
 import type { OktaMcpProcessPool } from './mcp/processPool';
+
+/** Paths MCP clients use, which may be web apps on any origin: the MCP servers and sign-in. */
+const OPEN_PATHS = /^\/(mcp|oauth|\.well-known)\//;
 
 export const createApp = (deps: ChatDeps & { oktaMcp: OktaMcpProcessPool }) =>
   new Hono()
     .use(logger())
-    // The extension calls from its service worker (chrome-extension:// origin);
-    // MCP clients like Claude Desktop don't send an Origin at all.
-    .use(cors({ origin: (origin) => (origin.startsWith('chrome-extension://') ? origin : null) }))
+    // The extension calls from its service worker (chrome-extension:// origin). MCP
+    // clients like Claude Desktop don't send an Origin at all; web-based ones may.
+    // Tokens travel in headers, never cookies, so any origin can call those paths.
+    .use(
+      cors({
+        origin: (origin, c) =>
+          origin.startsWith('chrome-extension://') || OPEN_PATHS.test(c.req.path) ? origin : null,
+        exposeHeaders: ['WWW-Authenticate'],
+      }),
+    )
     .get('/health', (c) => c.text('ok'))
     .get('/api/config', (c) =>
-      c.json<ServerConfig>({ oktaOrgUrl: config.oktaOrgUrl, oktaClientId: config.oktaClientId }),
+      c.json<ServerConfig>({
+        orgs: config.orgs.map((org) => ({ oktaOrgUrl: org.url, oktaClientId: org.clientId })),
+      }),
     )
     .route('/api/chats', createChatRoutes(deps))
-    .post('/mcp', requireAuth, (c) => handleMcpRequest(c.req.raw, c.var.principal, deps.oktaMcp))
+    // One MCP server per org, each with its own sign-in.
+    .post(
+      '/mcp/:org',
+      requireAuth((c) => config.org(c.req.param('org') ?? ''), signInChallenge),
+      (c) =>
+        handleMcpRequest(c.req.raw, c.var.principal, deps.oktaMcp, () =>
+          signInChallenge(c, c.var.principal.org, 'invalid_token'),
+        ),
+    )
     // Stateless server: no standalone SSE stream or sessions to delete.
-    .on(['GET', 'DELETE'], '/mcp', (c) => c.json({ error: 'Method not allowed' }, 405));
+    .on(['GET', 'DELETE'], '/mcp/:org', (c) => c.json({ error: 'Method not allowed' }, 405))
+    .route('/', createOAuthRoutes());

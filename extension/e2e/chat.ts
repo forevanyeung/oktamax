@@ -61,7 +61,7 @@ async function main() {
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
   await worker.evaluate(() =>
     chrome.storage.session.set({
-      oktaToken: {
+      'oktaToken:https://acme.okta.com': {
         accessToken: 'token-ada',
         expiresAt: Date.now() + 3_600_000,
         orgUrl: 'https://acme.okta.com',

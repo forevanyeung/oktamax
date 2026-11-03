@@ -13,7 +13,7 @@ export type ChatMessage = UIMessage<ChatMessageMetadata>;
 
 export interface Chat {
   id: string;
-  /** Okta user ID of the admin who owns this chat. */
+  /** The admin who owns this chat (`principalKey`: org host and Okta user ID). */
   ownerId: string;
   messages: ChatMessage[];
   updatedAt: number;

@@ -17,14 +17,62 @@ const required = (name: string) => {
   return value;
 };
 
-const oktaOrgUrl = new URL(required('OKTA_ORG_URL')).origin;
+/** An Okta org this server serves, and the OIDC app its admins sign in with. */
+export interface OktaOrg {
+  /** e.g. acme.okta.com: names the org in URLs (`/mcp/acme.okta.com`). */
+  host: string;
+  /** e.g. https://acme.okta.com */
+  url: string;
+  /** Client ID of the org's OIDC app (public client, PKCE). */
+  clientId: string;
+}
+
+const org = (url: string, clientId: string): OktaOrg => {
+  const { origin, host } = new URL(url);
+  return { host, url: origin, clientId };
+};
+
+/**
+ * OKTA_ORG_URL + OKTA_CLIENT_ID for one org, and/or OKTA_ORGS for more:
+ * `https://acme.okta.com=0oa123 https://acme.oktapreview.com=0oa456`.
+ */
+function readOrgs(): OktaOrg[] {
+  const orgs = (process.env.OKTA_ORGS ?? '')
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map((entry) => {
+      const [url, clientId] = entry.split('=');
+      if (!url || !clientId)
+        throw new Error(`OKTA_ORGS: expected <org url>=<client id>, got ${entry}`);
+      return org(url, clientId);
+    });
+  if (process.env.OKTA_ORG_URL || !orgs.length) {
+    orgs.unshift(org(required('OKTA_ORG_URL'), required('OKTA_CLIENT_ID')));
+  }
+  const hosts = orgs.map((o) => o.host);
+  const dup = hosts.find((host, i) => hosts.indexOf(host) !== i);
+  if (dup) throw new Error(`${dup} is configured twice`);
+  return orgs;
+}
+
+const orgs = readOrgs();
 
 export const config = {
   port: Number(process.env.PORT ?? 8787),
-  /** e.g. https://acme.okta.com – the org whose admins use this server. */
-  oktaOrgUrl,
-  /** Client ID of the OIDC app the extension signs in with (public client, PKCE). */
-  oktaClientId: required('OKTA_CLIENT_ID'),
+  /** The orgs whose admins use this server. Each has its own MCP server at `/mcp/<host>`. */
+  orgs,
+  /** The configured org with this host (acme.okta.com), if any. */
+  org: (host: string) => orgs.find((o) => o.host === host),
+  /**
+   * The server's public URL, e.g. https://oktamax.example.com: MCP clients are sent
+   * back to it while signing in. Defaults to the URL each request came in on.
+   */
+  publicUrl: process.env.PUBLIC_URL ? new URL(process.env.PUBLIC_URL).origin : undefined,
+  /**
+   * Signs the client IDs handed to MCP clients, so registrations survive restarts.
+   * Without it they last until the server restarts, and clients register again.
+   */
+  oauthSecret: process.env.OAUTH_SECRET,
   /**
    * Which model to use: Anthropic's API if there's an API key, otherwise Bedrock.
    * MODEL_ID is a model ID for the API, or a Bedrock model or inference profile ID.
@@ -60,6 +108,6 @@ export const config = {
         join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'uv', 'python'),
     },
   },
-  /** Where the chat route reaches the MCP gateway. Defaults to this process. */
+  /** Where the chat route reaches the MCP gateway (`<mcpUrl>/<org host>`). Defaults to this process. */
   mcpUrl: process.env.MCP_URL ?? `http://localhost:${process.env.PORT ?? 8787}/mcp`,
 };

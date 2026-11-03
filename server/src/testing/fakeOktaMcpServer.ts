@@ -7,8 +7,8 @@
  *   - tools are registered according to OKTA_SCOPES at startup,
  *   - there are write tools (`create_user`) the gateway must never expose.
  *
- * `list_users` reports which token, process and HOME served it, so tests can
- * check admins are isolated from each other.
+ * `list_users` reports which token, org, process and HOME served it, so tests
+ * can check admins (and orgs) are isolated from each other.
  */
 import { readFileSync } from 'node:fs';
 
@@ -32,7 +32,12 @@ if (scopes.has('okta.users.read')) {
       json({
         users: [{ id: '00u1', profile: { login: 'locked@example.com' } }],
         search,
-        servedBy: { token: token(), pid: process.pid, home: process.env.HOME },
+        servedBy: {
+          token: token(),
+          org: process.env.OKTA_ORG_URL,
+          pid: process.pid,
+          home: process.env.HOME,
+        },
       }),
   );
 }

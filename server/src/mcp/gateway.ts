@@ -1,8 +1,10 @@
 /**
- * Hosted, multi-user front door for Okta's MCP server, at POST /mcp.
+ * Hosted, multi-user front door for Okta's MCP server, at POST /mcp/<org host>:
+ * one MCP server per org, so a client connected to one org never gets another's
+ * answers.
  *
- * Each request is authenticated (see `auth.ts`), then served by that admin's
- * own okta-mcp-server process from the pool. On top of the read-only token
+ * Each request is authenticated against that org (see `auth.ts`), then served
+ * by that admin's own okta-mcp-server process from the pool. On top of the read-only token
  * scopes, the gateway only exposes – and only forwards calls to – read tools.
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -27,14 +29,14 @@ export const isReadOnlyTool = (name: string) =>
 /** Okta's server checks the token is valid for 60s more; leave margin for a whole chat turn. */
 const MIN_TOKEN_LIFETIME_MS = 2 * 60_000;
 
+/** `expiring` answers a token that's about to expire (by default, a plain 401). */
 export async function handleMcpRequest(
   request: Request,
   principal: Principal,
   pool: OktaMcpProcessPool,
+  expiring = () => Response.json({ error: 'token_expiring' }, { status: 401 }),
 ): Promise<Response> {
-  if (principal.expiresAt * 1000 - Date.now() < MIN_TOKEN_LIFETIME_MS) {
-    return Response.json({ error: 'token_expiring' }, { status: 401 });
-  }
+  if (principal.expiresAt * 1000 - Date.now() < MIN_TOKEN_LIFETIME_MS) return expiring();
 
   // Start (or reuse) the admin's Okta server only when a request actually needs it.
   let lease: ReturnType<OktaMcpProcessPool['acquire']> | undefined;
