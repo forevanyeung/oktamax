@@ -4,12 +4,13 @@
  * - Holds the Okta access token for the chat server (content scripts never see it).
  * - Relays the chat's HTTP requests to the chat server, adding the token and
  *   streaming the response back over a port. Only requests to the configured
- *   chat server get a token.
+ *   chat server get a token. The chat server may serve several orgs: the chat
+ *   uses the one whose admin console it's on, with that org's token.
  * - In dev builds, answers them from a mock when no chat server is reachable.
  * - With the on-device assistant, answers them itself (`localChat.ts`), for the
  *   org of the admin console it's on, with no sign-in.
  */
-import type { ServerConfig } from '@oktamax/shared';
+import type { OrgConfig, ServerConfig } from '@oktamax/shared';
 
 import { onDeviceModel } from '../onDeviceModel';
 import { loadSettings, ON_DEVICE_CHAT_URL } from '../settings';
@@ -56,6 +57,13 @@ function adminTab(sender: chrome.runtime.MessageSender): AdminTab {
   };
 }
 
+/** The org the chat server serves for this admin console tab, if it serves it. */
+const orgFor = (
+  config: ServerConfig,
+  sender: chrome.runtime.MessageSender,
+): OrgConfig | undefined =>
+  config.orgs.find((org) => org.oktaOrgUrl === adminTab(sender).oktaOrgUrl);
+
 /** On-device, the chat works on any org's admin console: it reads with the admin's session. */
 async function onDeviceStatus(sender: chrome.runtime.MessageSender): Promise<AuthStatus> {
   const { oktaOrgUrl } = adminTab(sender);
@@ -78,9 +86,12 @@ async function authStatus(
     return { state: 'unreachable', serverUrl: chatServerUrl, error: String(error) };
   }
   if (!server) return { state: 'off' };
-  const { oktaOrgUrl } = server.config;
+  // Not one of the server's orgs: no chat on this admin console.
+  const org = orgFor(server.config, sender);
+  if (!org) return { state: 'off' };
+  const { oktaOrgUrl } = org;
   try {
-    await getAccessToken(server.config, interactive);
+    await getAccessToken(org, interactive);
     return { state: 'signedIn', oktaOrgUrl };
   } catch (error) {
     return { state: 'signedOut', oktaOrgUrl, error: String(error) };
@@ -122,20 +133,26 @@ async function forward(
   if (!server || new URL(request.url).origin !== new URL(server.serverUrl).origin) {
     throw new Error('Request is not for the configured chat server');
   }
+  const org = orgFor(server.config, sender);
+  if (!org) throw new Error('The chat server does not serve this org');
   let token: string;
   try {
-    token = await getAccessToken(server.config, false);
+    token = await getAccessToken(org, false);
   } catch {
     return Response.json({ error: 'signin_required' }, { status: 401 });
   }
 
   const res = await fetch(request.url, {
     method: request.method,
-    headers: { ...request.headers, Authorization: `Bearer ${token}` },
+    headers: {
+      ...request.headers,
+      Authorization: `Bearer ${token}`,
+      'X-Okta-Org': new URL(org.oktaOrgUrl).host,
+    },
     body: request.body,
     signal,
   });
-  if (res.status === 401) await clearAccessToken();
+  if (res.status === 401) await clearAccessToken(org.oktaOrgUrl);
   return res;
 }
 

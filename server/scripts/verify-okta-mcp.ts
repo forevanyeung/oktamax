@@ -84,7 +84,9 @@ function jwtFor(user: string) {
   }
   return tokens.get(user)!;
 }
+const org = { host: new URL(oktaUrl).host, url: oktaUrl, clientId: 'verify-client' };
 const principal = (user: string) => ({
+  org,
   userId: `00u${user}`,
   username: `${user}@example.com`,
   token: jwtFor(user),
@@ -96,8 +98,6 @@ const principal = (user: string) => ({
 // --- Gateway with the real okta-mcp-server --------------------------------------
 const pool = new OktaMcpProcessPool({
   ...config.oktaMcp,
-  oktaOrgUrl: oktaUrl,
-  oktaClientId: 'verify-client',
   env: {
     SSL_CERT_FILE: join(dir, 'cert.pem'),
     ...(process.env.UV_CACHE_DIR ? { UV_CACHE_DIR: process.env.UV_CACHE_DIR } : {}),

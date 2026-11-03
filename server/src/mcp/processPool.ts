@@ -3,7 +3,7 @@
  *
  * Okta's server is single-user: it reads one access token from the OS keyring
  * and decides its tool list from OKTA_SCOPES at startup. To host it for many
- * admins, each admin gets their own process with:
+ * admins (of one or more orgs), each admin gets their own process with:
  *
  *   - its own HOME (nothing shared on disk between admins),
  *   - a keyring backend (`python/oktamax_keyring.py`) that reads the admin's
@@ -25,14 +25,13 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
-import type { Principal } from '../auth';
+import { principalKey, type Principal } from '../auth';
+import type { OktaOrg } from '../config';
 
 export interface ProcessPoolOptions {
   /** Command that starts okta-mcp-server over stdio, e.g. `uvx okta-mcp-server@1.1.7`. */
   command: string;
   args: string[];
-  oktaOrgUrl: string;
-  oktaClientId: string;
   /** Scopes the Okta server may be started with; anything else in a token is ignored. */
   allowedScopes: readonly string[];
   /** Directory containing `oktamax_keyring.py`. */
@@ -72,17 +71,18 @@ export class OktaMcpProcessPool {
     const scopes = principal.scopes.filter((s) => this.options.allowedScopes.includes(s));
     const scopeList = scopes.sort().join(' ');
 
-    let session = this.sessions.get(principal.userId);
+    const key = principalKey(principal);
+    let session = this.sessions.get(key);
     // Okta's server fixes its tool list at startup, so a scope change needs a fresh process.
     if (session && session.scopes !== scopeList) {
-      await this.close(principal.userId);
+      await this.close(key);
       session = undefined;
     }
     if (session) {
       await writeToken(session.tokenFile, principal.token);
     } else {
       await this.makeRoom();
-      session = await this.start(principal.userId, scopeList, principal.token);
+      session = await this.start(key, principal.org, scopeList, principal.token);
     }
 
     session.lastUsed = Date.now();
@@ -98,7 +98,7 @@ export class OktaMcpProcessPool {
       };
     } catch (error) {
       current.inFlight--;
-      await this.close(principal.userId);
+      await this.close(key);
       throw error;
     }
   }
@@ -112,16 +112,16 @@ export class OktaMcpProcessPool {
   /**
    * Starts Okta's server once, lists its tools and stops it, so whatever `uvx` downloads
    * (the package, Python) is in place before the first admin needs it. Resolves with the
-   * time it took.
+   * time it took. Any org will do: it isn't called.
    */
-  async warmUp(): Promise<number> {
+  async warmUp(org: OktaOrg): Promise<number> {
     const started = Date.now();
     // okta-mcp-server only decodes the token's `exp` at startup (PyJWT, unverified), and calls
     // no Okta API here. An unexpired, unsigned JWT; anything it can't decode makes it sign in itself.
     const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
     const token = `${b64({ alg: 'none' })}.${b64({ exp: Math.floor(started / 1000) + 3600 })}.`;
     const id = '#warm-up'; // can't collide with an Okta user ID
-    const session = await this.start(id, this.options.allowedScopes.join(' '), token);
+    const session = await this.start(id, org, this.options.allowedScopes.join(' '), token);
     try {
       await (await session.client).listTools();
     } finally {
@@ -130,7 +130,8 @@ export class OktaMcpProcessPool {
     return Date.now() - started;
   }
 
-  private async start(userId: string, scopes: string, token: string): Promise<Session> {
+  /** `key` is the admin's `principalKey`: one process per admin per org. */
+  private async start(key: string, org: OktaOrg, scopes: string, token: string): Promise<Session> {
     const home = await mkdtemp(join(await this.root, 'admin-'));
     await chmod(home, 0o700);
     const tokenFile = join(home, 'okta-token');
@@ -146,8 +147,8 @@ export class OktaMcpProcessPool {
         HOME: home,
         XDG_DATA_HOME: join(home, '.local', 'share'),
         XDG_CONFIG_HOME: join(home, '.config'),
-        OKTA_ORG_URL: this.options.oktaOrgUrl,
-        OKTA_CLIENT_ID: this.options.oktaClientId,
+        OKTA_ORG_URL: org.url,
+        OKTA_CLIENT_ID: org.clientId,
         OKTA_SCOPES: scopes,
         OKTA_LOG_LEVEL: 'WARNING',
         PYTHON_KEYRING_BACKEND: 'oktamax_keyring.TokenFileKeyring',
@@ -156,12 +157,12 @@ export class OktaMcpProcessPool {
       },
     });
     transport.stderr?.on('data', (chunk: Buffer) =>
-      console.error(`[okta-mcp ${userId}] ${chunk.toString().trimEnd()}`),
+      console.error(`[okta-mcp ${key}] ${chunk.toString().trimEnd()}`),
     );
 
     const client = new Client({ name: 'oktamax-gateway', version: '0.1.0' });
     transport.onclose = () => {
-      if (this.sessions.get(userId)?.client === session.client) this.sessions.delete(userId);
+      if (this.sessions.get(key)?.client === session.client) this.sessions.delete(key);
     };
 
     const session: Session = {
@@ -177,7 +178,7 @@ export class OktaMcpProcessPool {
                 `${this.options.command} not found: install uv, or set OKTA_MCP_COMMAND`,
               );
             }
-            throw new Error(`${error.message} (see the [okta-mcp ${userId}] lines in the log)`);
+            throw new Error(`${error.message} (see the [okta-mcp ${key}] lines in the log)`);
           },
         ),
       home,
@@ -186,14 +187,15 @@ export class OktaMcpProcessPool {
       lastUsed: Date.now(),
       inFlight: 0,
     };
-    this.sessions.set(userId, session);
+    this.sessions.set(key, session);
     return session;
   }
 
-  async close(userId: string) {
-    const session = this.sessions.get(userId);
+  /** Stops the process of the admin with this `principalKey`. */
+  async close(key: string) {
+    const session = this.sessions.get(key);
     if (!session) return;
-    this.sessions.delete(userId);
+    this.sessions.delete(key);
     // okta-mcp-server 1.1.x prints a harmless asyncio traceback when stdin closes.
     session.transport.stderr?.removeAllListeners('data');
     await session.client.then((c) => c.close()).catch(() => undefined);
@@ -202,8 +204,8 @@ export class OktaMcpProcessPool {
 
   private async closeIdle() {
     const cutoff = Date.now() - (this.options.idleMs ?? 10 * 60_000);
-    for (const [userId, session] of this.sessions) {
-      if (session.inFlight === 0 && session.lastUsed < cutoff) await this.close(userId);
+    for (const [key, session] of this.sessions) {
+      if (session.inFlight === 0 && session.lastUsed < cutoff) await this.close(key);
     }
   }
 

@@ -174,8 +174,8 @@ Admin console tab                     Service worker              Server        
 - **The server validates tokens** by introspection: they must be active and issued to this app.
   It keeps chat history per Okta user, and one admin can't open another's chat.
 - **Okta's MCP server, hosted for many admins.** See [below](#hosting-oktas-mcp-server-for-many-admins).
-  `POST /mcp` is a standard MCP endpoint, so any MCP client can use it with an admin's token, not
-  just this chat.
+  Each org's is a standard MCP server at `/mcp/<org host>`, which admins can also
+  [add to their own MCP clients](#using-the-mcp-servers-from-your-own-mcp-client).
 - **Page context.** Each message carries the page it was sent from: URL, title, headings, Okta
   IDs in the URL, selected text, and up to 8,000 characters of visible text. The server places this
   in front of that message, not in the system prompt, so earlier turns never change.
@@ -221,13 +221,13 @@ The gateway (`server/src/mcp/`) hosts it for many admins **without modifying it*
 
 | Concern                | How it's handled                                                                                                                                                                                                                                                                                                                                               |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Whose identity is used | Every `/mcp` request is authenticated (token introspection) and served by **that admin's own `okta-mcp-server` process**, so Okta applies the admin's own role on every call.                                                                                                                                                                                  |
+| Whose identity is used | Every `/mcp/<org>` request is authenticated (token introspection at that org) and served by **that admin's own `okta-mcp-server` process** for that org, so Okta applies the admin's own role on every call.                                                                                                                                                   |
 | Getting the token in   | `server/python/oktamax_keyring.py` is a keyring backend, selected with keyring's standard `PYTHON_KEYRING_BACKEND` setting. It serves the token from a file that the gateway rewrites before each request. Okta's server reads the keyring on every tool call, so a renewed token is picked up without a restart, and the server never starts its own sign-in. |
 | Isolation              | One process per admin, each with its own temporary `HOME` (mode 700) and a minimal environment. The server's AWS credentials and other secrets aren't passed in.                                                                                                                                                                                               |
 | Read-only, three ways  | (1) The token only has `okta.*.read` scopes. (2) `OKTA_SCOPES` is set to the read scopes the token actually has, so Okta's server drops its write tools at startup. (3) The gateway only lists, and only forwards calls to, `list_*`/`get_*` tools.                                                                                                            |
 | Resources              | Processes are reused across requests, closed after `OKTA_MCP_IDLE_MINUTES` (default 10) of idleness, and capped at `OKTA_MCP_MAX_PROCESSES` (default 50; when full, the least recently used idle one is closed).                                                                                                                                               |
 | Start-up               | At startup the server runs `okta-mcp-server` once, so `uvx` has downloaded it and Python before anyone asks (the log says `Okta MCP: ready`). Admins' processes share the server user's uv cache (`UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`) rather than their temporary `HOME`. An admin's process starts when they open the chat, not at their first question. |
-| Token lifetime         | `/mcp` refuses tokens with under 2 minutes left (Okta's server treats a token within 60 s of expiry as expired). The extension renews tokens 10 minutes before they expire.                                                                                                                                                                                    |
+| Token lifetime         | `/mcp/<org>` refuses tokens with under 2 minutes left (Okta's server treats a token within 60 s of expiry as expired). The extension renews tokens 10 minutes before they expire; MCP clients are told to refresh theirs (`error="invalid_token"`).                                                                                                            |
 
 Each process is a Python interpreter, roughly 50–100 MB. That's sized for a team of admins, not
 thousands of concurrent users.
@@ -245,6 +245,72 @@ The tools available with the default scopes are:
 `okta-mcp-server` has no tools yet for network zones, authenticators, group rules, identity
 providers or authorization servers, so the assistant can't answer questions about those.
 
+### More than one org
+
+One server can serve several orgs (production, preview, test), each with its own OIDC app. List
+them in `OKTA_ORGS` as `<org url>=<client id>`, separated by spaces, alongside or instead of
+`OKTA_ORG_URL` / `OKTA_CLIENT_ID`:
+
+```sh
+OKTA_ORGS="https://acme.okta.com=0oa111 https://acme.oktapreview.com=0oa222"
+```
+
+- The assistant uses the org of the admin console it's open on, with a token for that org. The
+  **Ask** button doesn't appear on other orgs' admin consoles. The extension sends the org with each
+  request (`X-Okta-Org: acme.okta.com`), and the token must come from that org's app.
+- Each org gets its own MCP server at `/mcp/<org host>`. A token from one org is refused by
+  another's, and an admin of two orgs gets a separate `okta-mcp-server` process for each, so
+  answers from one org can never be mixed into another's.
+- Chats belong to an admin in one org.
+
+### Using the MCP servers from your own MCP client
+
+Admins can add an org's read-only Okta MCP server to Claude Code, Claude Desktop, Cursor, VS Code
+or any MCP client that supports OAuth, outside the assistant. Each org is its own server:
+
+```sh
+claude mcp add --transport http okta-acme https://oktamax.example.com/mcp/acme.okta.com
+```
+
+The client signs in on first use: a browser page asks whether to allow it, then Okta signs the
+admin in (usually silently) with the org's OIDC app. Admins only need the URL; the org's app ID is
+on the server. It works for the orgs the server is configured for, and no others: anyone could
+otherwise use it to reach any org.
+
+How sign-in works (`server/src/mcp/oauth.ts`), following the
+[MCP authorization spec](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization):
+
+- A request without a valid token gets a 401 pointing to
+  `/.well-known/oauth-protected-resource/mcp/<org>`. That names this server, at
+  `/oauth/<org>`, as the org's authorization server. Okta's own can't register clients on the fly,
+  and each client has its own redirect URI.
+- Clients register themselves (dynamic client registration). The registration is in the client
+  ID, signed with `OAUTH_SECRET`, so nothing is stored. Without `OAUTH_SECRET`, client IDs stop
+  working when the server restarts, and clients register again. Redirect URIs must be https,
+  `http://localhost` (any port), or an app's own scheme (`cursor://...`).
+- **A consent page comes first, every time**, naming the app and where it sends the admin back to.
+  Without it, anyone could register a client, send an admin a link, and have their silent Okta
+  sign-in hand a token to that client. The consent and Okta's callback only work in the browser
+  that was shown the page (a cookie checks it), and the page can't be framed.
+- On **Allow**, the admin signs in to Okta with the org's app (PKCE, the read scopes plus
+  `offline_access`), redirecting to the server's `/oauth/callback`. The server then gives the
+  client a one-time code. The client exchanges it (with its own PKCE verifier) for **Okta's own
+  access and refresh tokens**. The access token is the same kind the extension holds: read scopes
+  only, limited by the admin's role, and checked by introspection like the extension's.
+- Refreshing goes through `/oauth/<org>/token` to Okta, as the org's app.
+
+To allow it, each org's OIDC app also needs:
+
+- the sign-in redirect URI `https://<server>/oauth/callback` (the same for every org);
+- the **Refresh Token** grant, so clients don't have to sign in again every hour.
+
+`npm run create-okta-app -w @oktamax/server -- <extension-id> --server https://<server>` sets
+both. Set `PUBLIC_URL` when the server is behind a proxy, so the URLs it hands out are the
+public ones, and `OAUTH_SECRET` so registrations survive restarts.
+
+> Pending sign-ins and codes are kept in memory for 10 minutes, like chats: with more than one
+> instance, route `/oauth/*` to one of them, or move them to a shared store.
+
 ### Setup
 
 #### 1. Okta OIDC app
@@ -256,7 +322,10 @@ In the Okta org the admins use, either run the script, which does steps 1–3 (a
 OKTA_API_TOKEN=... npm run create-okta-app -w @oktamax/server -- <extension-id> [--group "Okta Admins"]
 ```
 
-It needs `OKTA_ORG_URL` (from `server/.env`) and an API token from a super admin. Or by hand:
+It needs `OKTA_ORG_URL` (from `server/.env`) and an API token from a super admin. Add
+`--server https://<server>` so admins can also use the org's MCP server from their own MCP clients
+([below](#using-the-mcp-servers-from-your-own-mcp-client)). For more orgs, run it once per org with
+that org's `OKTA_ORG_URL`. Or by hand:
 
 1. Create an **OIDC Native** (or SPA) app: Authorization Code with **PKCE**, no client secret.
 2. Sign-in redirect URIs, both:
@@ -310,7 +379,7 @@ Build and load the extension as in [Install](#install), then:
 
 1. In the toolbar popup, set **Chat server URL**. It defaults to `http://localhost:8787`, and
    Chrome asks for permission to reach it.
-2. The **Ask** button appears only on the admin console of the org the server is configured for.
+2. The **Ask** button appears only on the admin consoles of the orgs the server is configured for.
    While the server can't be reached, it appears on every admin console, and the panel says the
    assistant isn't set up yet.
 
@@ -500,6 +569,11 @@ their history. Screenshots are saved to `extension/e2e/*.png`.
 - **`server/src/app.test.ts`** runs the real HTTP stack with a fake Okta, a scripted model and a
   stand-in for `okta-mcp-server` (`server/src/testing/`). It covers:
   - only read-only tools are exposed or callable, even when the token has a write scope;
+  - one MCP server per org: unknown orgs, and other orgs' tokens, are refused, and an admin of two
+    orgs gets a process for each;
+  - MCP clients signing in with the MCP SDK's own OAuth client (discovery, registration, consent,
+    Okta, code, refresh), and the consent page's checks: cancel, another browser, unregistered
+    redirects, and a client registered with one org trying another;
   - one process per admin, each using only its own token;
   - a process being reused and picking up a renewed token;
   - tokens about to expire being refused;

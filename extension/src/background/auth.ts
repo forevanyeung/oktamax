@@ -6,8 +6,8 @@
  * token is issued by the org authorization server with read-only Okta API
  * scopes, and is further limited by the admin's own role.
  *
- * Tokens live only in this service worker's `chrome.storage.session`; content
- * scripts never see them.
+ * Tokens live only in this service worker's `chrome.storage.session`, one per
+ * org; content scripts never see them.
  */
 import { OKTA_SCOPES } from '@oktamax/shared';
 
@@ -22,7 +22,8 @@ interface StoredToken {
   orgUrl: string;
 }
 
-const TOKEN_KEY = 'oktaToken';
+/** Where an org's token is kept: `oktaToken:https://acme.okta.com`. */
+const tokenKey = (oktaOrgUrl: string) => `oktaToken:${oktaOrgUrl}`;
 
 export class SignInRequiredError extends Error {}
 
@@ -97,9 +98,11 @@ async function authorize(config: AuthConfig, interactive: boolean): Promise<Stor
  * (only when `interactive`) via a sign-in window.
  */
 export async function getAccessToken(config: AuthConfig, interactive: boolean): Promise<string> {
-  const { [TOKEN_KEY]: cached } = (await chrome.storage.session.get(TOKEN_KEY)) as {
-    [TOKEN_KEY]?: StoredToken;
-  };
+  const key = tokenKey(config.oktaOrgUrl);
+  const { [key]: cached } = (await chrome.storage.session.get(key)) as Record<
+    string,
+    StoredToken | undefined
+  >;
   // Renew well before expiry: the server refuses tokens with under 2 minutes left, so a
   // chat turn never runs into an expired token mid-way.
   if (
@@ -117,8 +120,9 @@ export async function getAccessToken(config: AuthConfig, interactive: boolean): 
     if (!interactive) throw error;
     token = await authorize(config, true);
   }
-  await chrome.storage.session.set({ [TOKEN_KEY]: token });
+  await chrome.storage.session.set({ [key]: token });
   return token.accessToken;
 }
 
-export const clearAccessToken = () => chrome.storage.session.remove(TOKEN_KEY);
+export const clearAccessToken = (oktaOrgUrl: string) =>
+  chrome.storage.session.remove(tokenKey(oktaOrgUrl));

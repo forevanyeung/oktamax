@@ -25,7 +25,7 @@ import * as z from 'zod';
 
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
-import { requireAuth } from '../auth';
+import { orgFromHeader, principalKey, requireAuth } from '../auth';
 import type { OktaMcpProcessPool } from '../mcp/processPool';
 import { pageTools } from './pageTools';
 import { instructions, withPageContext } from './prompt';
@@ -34,7 +34,7 @@ import type { Chat, ChatMessage, ChatStore } from './store';
 export interface ChatDeps {
   model: LanguageModel;
   store: ChatStore;
-  /** URL of the Okta MCP server the model's tools come from. */
+  /** Base URL of the Okta MCP servers the model's tools come from (`<mcpUrl>/<org host>`). */
   mcpUrl: string;
   /** The admins' Okta MCP processes behind `mcpUrl`, started early when a chat opens. */
   oktaMcp: Pick<OktaMcpProcessPool, 'prepare'>;
@@ -51,16 +51,17 @@ const pageContextSchema = z.object({
 const metadataSchema = z.object({ page: pageContextSchema.optional() }).optional();
 
 export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
-  const chatRoutes = new Hono().use(requireAuth);
+  // The extension says which org's admin console the chat is on (X-Okta-Org).
+  const chatRoutes = new Hono().use(requireAuth(orgFromHeader));
 
   /** The admin's own chat, or a 404/403 response. New IDs create an empty chat when `create`. */
-  function loadChat(id: string, userId: string, create = false): Chat | Response {
+  function loadChat(id: string, ownerId: string, create = false): Chat | Response {
     const chat = store.get(id);
     if (!chat) {
       if (!create) return Response.json({ error: 'not_found' }, { status: 404 });
-      return { id, ownerId: userId, messages: [], updatedAt: Date.now() };
+      return { id, ownerId, messages: [], updatedAt: Date.now() };
     }
-    if (chat.ownerId !== userId) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (chat.ownerId !== ownerId) return Response.json({ error: 'forbidden' }, { status: 403 });
     return chat;
   }
 
@@ -69,15 +70,15 @@ export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
     // process now, so it's running by the time they ask something.
     oktaMcp
       .prepare(c.var.principal)
-      .catch((error) => console.error(`Okta MCP for ${c.var.principal.userId}: ${error}`));
-    const chat = loadChat(c.req.param('id'), c.var.principal.userId);
+      .catch((error) => console.error(`Okta MCP for ${principalKey(c.var.principal)}: ${error}`));
+    const chat = loadChat(c.req.param('id'), principalKey(c.var.principal));
     if (chat instanceof Response) return chat;
     return c.json({ messages: chat.messages, running: Boolean(chat.active) });
   });
 
   chatRoutes.post('/:id/messages', async (c) => {
     const principal = c.var.principal;
-    const chat = loadChat(c.req.param('id'), principal.userId, true);
+    const chat = loadChat(c.req.param('id'), principalKey(principal), true);
     if (chat instanceof Response) return chat;
     if (chat.active) return c.json({ error: 'busy' }, 409);
 
@@ -92,7 +93,7 @@ export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
     const mcp = await createMCPClient({
       transport: {
         type: 'http',
-        url: mcpUrl,
+        url: `${mcpUrl}/${principal.org.host}`,
         headers: { Authorization: `Bearer ${principal.token}` },
       },
     });
@@ -137,7 +138,7 @@ export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
   });
 
   chatRoutes.get('/:id/stream', (c) => {
-    const chat = loadChat(c.req.param('id'), c.var.principal.userId);
+    const chat = loadChat(c.req.param('id'), principalKey(c.var.principal));
     if (chat instanceof Response || !chat.active) return c.body(null, 204);
 
     const body = chat.active.replay().pipeThrough(new TextEncoderStream());
@@ -145,7 +146,7 @@ export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
   });
 
   chatRoutes.post('/:id/stop', (c) => {
-    const chat = loadChat(c.req.param('id'), c.var.principal.userId);
+    const chat = loadChat(c.req.param('id'), principalKey(c.var.principal));
     if (chat instanceof Response) return chat;
     chat.active?.abort.abort();
     return c.body(null, 204);
