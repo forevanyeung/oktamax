@@ -171,9 +171,7 @@ const Popup = () => {
       {settings?.assistant === 'onDevice' && (
         <div className="server">
           <small>
-            Runs in Chrome, with nothing to set up: Gemini Nano answers, and Okta’s MCP server runs
-            on WebAssembly. It reads the org of the admin console it’s on, with your session, and
-            can’t change anything.
+            Runs in Chrome, with Client-side AI.
           </small>
           <ModelStatus />
         </div>
