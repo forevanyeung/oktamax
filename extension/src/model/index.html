@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Okta Max: Chrome’s built-in model</title>
+    <style>
+      :root {
+        --text: #272727;
+        --muted: #6e6e6e;
+        --bg: #fff;
+        --border: #cbcbcb;
+        --accent: #4c64e1;
+        --selected: #f2f3fd;
+        --error: #d93934;
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --text: #e6e6ea;
+        --muted: #a1a2ab;
+        --bg: #1c1d21;
+        --border: #4a4c55;
+        --accent: #8b9cf6;
+        --selected: #232a4d;
+        --error: #f27f7a;
+      }
+      body {
+        margin: 0;
+        font:
+          14px/1.5 Inter,
+          -apple-system,
+          system-ui,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      main {
+        max-width: 520px;
+        margin: 48px auto;
+        padding: 0 24px;
+      }
+      header {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: 0 0 16px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      progress {
+        width: 100%;
+        accent-color: var(--accent);
+      }
+      button {
+        padding: 6px 12px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        font: inherit;
+        font-weight: 600;
+        color: var(--accent);
+        background: transparent;
+        cursor: pointer;
+      }
+      button:hover {
+        background: var(--selected);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .link {
+        padding: 0;
+        border: 0;
+        font-weight: normal;
+        text-decoration: underline;
+      }
+      .link:hover {
+        background: none;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .error {
+        color: var(--error);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

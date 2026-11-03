@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { openModelPage, useModelAvailability } from '../model/availability';
 import {
   loadManagedSettings,
   loadSettings,
   saveSettings,
   watchDarkMode,
+  type AssistantMode,
   type Settings,
   type Theme,
 } from '../settings';
@@ -19,6 +21,43 @@ const THEMES: Array<[Theme, string]> = [
   ['dark', 'Dark'],
   ['system', 'System'],
 ];
+
+const ASSISTANTS: Array<[AssistantMode, string]> = [
+  ['server', 'Chat server'],
+  ['onDevice', 'On-device'],
+];
+
+/**
+ * Chrome's built-in model: whether it's ready, kept up to date while the popup is
+ * open. Downloading happens in a tab (`src/model/`), which outlives the popup.
+ */
+const ModelStatus = () => {
+  const [availability] = useModelAvailability();
+
+  if (!availability) return null;
+  return (
+    <div className="model">
+      {availability === 'available' ? (
+        <small>Chrome’s built-in model is ready.</small>
+      ) : availability.startsWith('unavailable') ? (
+        <small className="error">
+          Chrome’s built-in model can’t run on this device ({availability}).
+        </small>
+      ) : (
+        <>
+          <small>
+            {availability === 'downloading'
+              ? 'Chrome is downloading its built-in model (Gemini Nano)…'
+              : 'Chrome’s built-in model (Gemini Nano) needs to be downloaded once.'}
+          </small>
+          <button type="button" onClick={() => void openModelPage()}>
+            {availability === 'downloading' ? 'Show progress' : 'Download'}
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
 
 void watchDarkMode((dark) => (document.documentElement.dataset.theme = dark ? 'dark' : 'light'));
 
@@ -117,6 +156,29 @@ const Popup = () => {
         </label>
       )}
       {settings && (
+        <fieldset className="theme">
+          <legend>Assistant</legend>
+          {ASSISTANTS.map(([value, label]) => (
+            <label key={value}>
+              <input
+                type="radio"
+                name="assistant"
+                value={value}
+                checked={settings.assistant === value}
+                onChange={() => update({ assistant: value })}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {settings?.assistant === 'onDevice' && (
+        <div className="server">
+          <small>Runs in Chrome, with Client-side AI.</small>
+          <ModelStatus />
+        </div>
+      )}
+      {settings?.assistant === 'server' && (
         <form
           className="server"
           onSubmit={(e) => {

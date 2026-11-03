@@ -2,19 +2,12 @@
  * A stand-in for the chat server in dev builds, used when no server is
  * reachable, so the chat UI can be worked on without Okta, Bedrock or a server.
  *
- * Serves the same routes as `server/src/chat/routes.ts`, with canned replies
- * that stream word by word, look things up, and know the page. It runs in the
- * service worker, so like the real server it keeps replying across page loads.
- * History is kept in `chrome.storage.local`.
+ * Serves the same routes as `server/src/chat/routes.ts` (see `chatRoutes.ts`),
+ * with canned replies that stream word by word, look things up, and know the page.
  */
-import {
-  createUIMessageStream,
-  JsonToSseTransformStream,
-  UI_MESSAGE_STREAM_HEADERS,
-  type UIMessage,
-} from 'ai';
+import { createUIMessageStream, JsonToSseTransformStream } from 'ai';
 
-import type { ChatMessageMetadata, PageContext, SendMessageBody } from '@oktamax/shared';
+import type { PageContext } from '@oktamax/shared';
 import {
   checkPageTool,
   NAVIGATE,
@@ -23,9 +16,7 @@ import {
 } from '@oktamax/shared/pageTools';
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
-import type { BridgeRequest } from './messages';
-
-type Message = UIMessage<ChatMessageMetadata>;
+import { serveChats, type StartReply } from './chatRoutes';
 
 interface Lookup {
   tool: string;
@@ -182,26 +173,14 @@ const sleep = (ms: number, signal: AbortSignal) =>
     signal.addEventListener('abort', () => (clearTimeout(timer), resolve()), { once: true });
   });
 
-const STORAGE_KEY = 'mockChats';
-const running = new Map<string, StreamBuffer>();
-
-const loadChats = async () =>
-  ((await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY] ?? {}) as Record<string, Message[]>;
-
-const saveChat = async (id: string, messages: Message[]) =>
-  chrome.storage.local.set({ [STORAGE_KEY]: { ...(await loadChats()), [id]: messages } });
-
-const sse = (stream: ReadableStream<string>) =>
-  new Response(stream.pipeThrough(new TextEncoderStream()), { headers: UI_MESSAGE_STREAM_HEADERS });
-
-function start(chatId: string, messages: Message[]): StreamBuffer {
+const start: StartReply = (messages, save) => {
   const question = messages.at(-1)!;
   const text = question.parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
   const answer = reply(text, question.metadata?.page);
   const abort = new AbortController();
   const { signal } = abort;
 
-  const stream = createUIMessageStream<Message>({
+  const stream = createUIMessageStream({
     originalMessages: messages,
     generateId: () => crypto.randomUUID(),
     execute: async ({ writer }) => {
@@ -235,45 +214,11 @@ function start(chatId: string, messages: Message[]): StreamBuffer {
       if (answer.error) writer.write({ type: 'error', errorText: answer.error });
       else writer.write({ type: 'finish' });
     },
-    onEnd: async ({ messages: final }) => {
-      await saveChat(chatId, final);
-      running.delete(chatId);
-    },
+    onEnd: ({ messages: final }) => save(final),
   });
 
   return new StreamBuffer(stream.pipeThrough(new JsonToSseTransformStream()), abort);
-}
+};
 
 /** Answers a chat request the way the chat server would. */
-export async function mockChat(request: BridgeRequest): Promise<Response> {
-  const match = /^\/api\/chats\/([^/]+)(\/messages|\/stream|\/stop)?$/.exec(
-    new URL(request.url).pathname,
-  );
-  if (!match) return Response.json({ error: 'not_found' }, { status: 404 });
-  const chatId = decodeURIComponent(match[1]!);
-  const route = `${request.method} ${match[2] ?? ''}`;
-
-  if (route === 'GET ') {
-    const messages = (await loadChats())[chatId];
-    if (!messages) return Response.json({ error: 'not_found' }, { status: 404 });
-    return Response.json({ messages, running: running.has(chatId) });
-  }
-  if (route === 'POST /messages') {
-    if (running.has(chatId)) return Response.json({ error: 'busy' }, { status: 409 });
-    const { message } = JSON.parse(request.body ?? '{}') as SendMessageBody<Message>;
-    const messages = [...((await loadChats())[chatId] ?? []), message];
-    await saveChat(chatId, messages);
-    const buffer = start(chatId, messages);
-    running.set(chatId, buffer);
-    return sse(buffer.replay());
-  }
-  if (route === 'GET /stream') {
-    const buffer = running.get(chatId);
-    return buffer ? sse(buffer.replay()) : new Response(null, { status: 204 });
-  }
-  if (route === 'POST /stop') {
-    running.get(chatId)?.abort.abort();
-    return new Response(null, { status: 204 });
-  }
-  return Response.json({ error: 'not_found' }, { status: 404 });
-}
+export const mockChat = serveChats('mockChats', start);

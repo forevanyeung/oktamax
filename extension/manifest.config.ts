@@ -25,7 +25,8 @@ export default defineManifest({
   version: pkg.version,
   icons,
   // identity: Okta sign-in for the chat server. storage: settings and chat state.
-  permissions: ['storage', 'identity'],
+  // offscreen: the on-device assistant runs Okta's MCP server in an offscreen document.
+  permissions: ['storage', 'identity', 'offscreen'],
   host_permissions: [
     // Token exchange with the Okta org authorization server.
     'https://*.okta.com/*',
@@ -37,6 +38,11 @@ export default defineManifest({
   ],
   // The chat server's origin, requested from the popup when it's configured.
   optional_host_permissions: ['https://*/*'],
+  content_security_policy: {
+    // The on-device assistant's offscreen document compiles Pyodide (WebAssembly).
+    // Still no eval or remote code: every .wasm file is part of the extension.
+    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+  },
   // Settings an organization can enforce through policy (chrome.storage.managed).
   storage: { managed_schema: 'managed_schema.json' },
   background: {

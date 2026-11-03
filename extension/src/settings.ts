@@ -1,5 +1,8 @@
 export type Theme = 'light' | 'dark' | 'system';
 
+/** Where the assistant runs: the chat server, or in Chrome (Gemini Nano and Okta's MCP server on WebAssembly). */
+export type AssistantMode = 'server' | 'onDevice';
+
 export interface Settings {
   /** Show view buttons even where Okta shows an Edit button (handy for testing as a super admin). */
   alwaysShowViewButton: boolean;
@@ -12,6 +15,7 @@ export interface Settings {
    * Can be enforced by policy (see `loadManagedSettings`).
    */
   chatServerUrl: string;
+  assistant: AssistantMode;
 }
 
 const defaults: Settings = {
@@ -19,7 +23,18 @@ const defaults: Settings = {
   theme: 'system',
   showApiConsole: true,
   chatServerUrl: 'http://localhost:8787',
+  assistant: 'server',
 };
+
+/**
+ * Stands in for the chat server's URL when the assistant runs on-device: the chat
+ * sends its requests here as usual, and the service worker answers them itself.
+ */
+export const ON_DEVICE_CHAT_URL = 'https://on-device.oktamax.invalid';
+
+/** The URL the chat sends its requests to; empty when the assistant is off. */
+export const chatUrl = (settings: Settings) =>
+  settings.assistant === 'onDevice' ? ON_DEVICE_CHAT_URL : settings.chatServerUrl;
 
 /**
  * Settings enforced by the organization's policy (e.g. Google Workspace admin's "Policy for

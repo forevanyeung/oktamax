@@ -10,7 +10,7 @@ import { useAISDKRuntime } from '@assistant-ui/react-ai-sdk';
 import { useEffect, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 
 import { useDrawerInset } from '../console/inset';
-import { loadSettings, onSettingsChanged } from '../settings';
+import { chatUrl, loadSettings, onSettingsChanged } from '../settings';
 import { useChatState } from './chatState';
 import { usePageActions } from './pageActions';
 import { CHAT_CSS } from './styles';
@@ -99,12 +99,14 @@ const Panel = ({
   children,
   style,
   mock,
+  onDevice,
   onClose,
   onNewChat,
 }: {
   children: ReactNode;
   style: CSSProperties;
   mock: boolean;
+  onDevice: boolean;
   onClose: () => void;
   onNewChat?: () => void;
 }) => (
@@ -124,6 +126,14 @@ const Panel = ({
       {mock && (
         <span className="chat-tag" title="Dev build without a chat server: replies are canned">
           Mock
+        </span>
+      )}
+      {onDevice && (
+        <span
+          className="chat-tag"
+          title="Answered by Chrome's built-in model, with Okta's MCP server running in the browser"
+        >
+          On-device
         </span>
       )}
       {onNewChat && (
@@ -148,8 +158,8 @@ const Panel = ({
 const useChatServerUrl = () => {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
-    void loadSettings().then((s) => setUrl(s.chatServerUrl));
-    onSettingsChanged((s) => setUrl(s.chatServerUrl));
+    void loadSettings().then((s) => setUrl(chatUrl(s)));
+    onSettingsChanged((s) => setUrl(chatUrl(s)));
   }, []);
   return url;
 };
@@ -194,6 +204,24 @@ const Notice = ({
         Try again
       </button>
     </div>
+  ) : status.state === 'modelUnavailable' ? (
+    <div className="chat-notice">
+      {status.availability === 'unavailable' ? (
+        <p>
+          <strong>Chrome’s built-in model can’t run on this device.</strong> It needs Chrome on
+          Windows, macOS or Linux, a GPU with more than 4 GB of memory (or 16 GB of RAM), and 22 GB
+          of free disk space. Use a chat server instead, in the Okta Max toolbar popup.
+        </p>
+      ) : (
+        <p>
+          <strong>Chrome’s built-in model isn’t downloaded yet</strong> ({status.availability}).
+          Start the download from the Okta Max toolbar popup.
+        </p>
+      )}
+      <button type="button" className="chat-button" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
   ) : (
     <div className="chat-notice">
       <p>
@@ -224,6 +252,7 @@ export const ChatLauncher = () => {
         <Panel
           style={placement.panel}
           mock={status.state === 'mock'}
+          onDevice={status.state === 'signedIn' && !!status.onDevice}
           onClose={() => setOpen(false)}
           onNewChat={canChat ? startNewChat : undefined}
         >

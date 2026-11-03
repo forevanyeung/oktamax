@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // Node for the runner; chrome for code evaluated inside the extension.
+    "types": ["node", "chrome"]
+  },
+  "include": [".", "../e2e/okta.ts"]
+}

@@ -314,6 +314,89 @@ Build and load the extension as in [Install](#install), then:
    While the server can't be reached, it appears on every admin console, and the panel says the
    assistant isn't set up yet.
 
+### On-device assistant (no server)
+
+The popup's **Assistant** switch has a second mode, **On-device**, that needs no chat server, no
+OIDC app and no sign-in: turn it on, download the model, and ask on any org's admin console.
+
+```
+Admin console tab            Service worker                        Offscreen document
+┌──────────────────┐  port  ┌──────────────────────────────┐ port  ┌────────────────────────────┐
+│ chat panel       │───────▶│ the chat server's routes      │──────▶│ Pyodide (CPython on WASM)  │
+│ (unchanged)      │◀───────│ AI SDK + Gemini Nano          │◀──────│ okta-mcp-server, unmodified│
+│                  │        │ (Prompt API, @browser-ai/core)│  MCP  │                            │
+│ Okta API GETs    │◀───────│ GETs to the tab's org only    │◀──────│ the SDK's requests         │
+│ (admin's session)│───────▶│                               │──────▶│                            │
+└──────────────────┘        └──────────────────────────────┘       └────────────────────────────┘
+```
+
+- **The model** is Chrome's built-in Gemini Nano (the Prompt API, stable for extensions since
+  Chrome 138), used through `@browser-ai/core`. Questions, page text and Okta data never leave the
+  browser. Chrome downloads it once for the whole browser, and every site and extension that uses
+  it shares that copy. Chrome only starts the download on a click, so the popup's **Download** button
+  opens a tab (`extension/src/model/`) that starts it and shows progress: a popup closes as soon as
+  it loses focus, taking the download with it. The popup shows the model's status, and
+  `chrome://on-device-internals` shows Chrome's own.
+- **Okta's MCP server** is the same `okta-mcp-server` 1.1.7, unmodified. It runs on Pyodide in an
+  offscreen document (`extension/src/offscreen/`). The differences from the hosted server are:
+  - There's no stdio in a browser, so the bridge feeds MCP JSON-RPC to the server over in-memory
+    streams.
+  - The Okta SDK's one HTTP method is replaced. Each request goes back to the service worker, which
+    has the admin console tab the chat is on send it (`extension/src/content/oktaGet.ts`), with
+    the admin's session, like the console's own calls and the API console's.
+  - There's no access token. The server still checks for one before it starts, so a keyring
+    backend hands it a placeholder that's never sent anywhere.
+  - pycryptodomex and jwcrypto, used only for private-key sign-in, are stubbed.
+
+- **The org** is the admin console the chat is on: `acme-admin.okta.com` is `acme.okta.com`'s.
+  Switching orgs restarts the MCP server, which takes a few seconds.
+- **Read-only, without read-only scopes.** The session has the admin's full rights, so reading is
+  enforced at every step instead:
+  - `OKTA_SCOPES` lists only read scopes, so the server drops its write tools.
+  - Only `list_*`/`get_*` tools are given to the model, as on the chat server's gateway.
+  - The service worker only passes on GETs to the tab's org.
+  - The tab only sends GETs under `/api/`, without the XSRF token Okta requires for changes.
+
+  The assistant can see whatever the admin can, rather than only what the OIDC app's scopes allow.
+
+- **Everything is bundled.** `npm run pyodide -w @oktamax/extension`, which the build runs when
+  `public/pyodide/` is missing, resolves the server's dependencies with micropip. It vendors
+  Pyodide and 59 wheels, about 26 MB, so nothing is downloaded at runtime: the Chrome Web Store
+  doesn't allow remote code. The extension's CSP adds `'wasm-unsafe-eval'` for that and nothing
+  else.
+- **It needs the admin console open**, which it always is while chatting: the panel lives there.
+
+What it costs:
+
+- **A guide in front of Okta's MCP server** (`extension/src/background/guide.ts`). The evals showed
+  Nano can't use okta-mcp-server's 47 read tools directly: picking from them took up to 30 s, and it
+  made up IDs and filter syntax that Okta rejects. So Nano gets about ten simple tools that take
+  names and fixed choices, such as `group_members({group: "Oktamax Engineering"})` or
+  `policies({type: "password"})`. Each one calls okta-mcp-server's tools, which still make every Okta
+  call:
+  - they look up IDs from names, write Okta's filters, and return only what an answer needs, with
+    a one-sentence summary;
+  - which ones Nano is offered (at most three) is picked from the question's words and the page,
+    without asking the model;
+  - "this group" or "this app" is the one on the page, whatever Nano calls it.
+- **Keeping Nano on track** (`extension/src/background/localChat.ts`):
+  - It looks something up once (twice if that fails), then has to answer.
+  - If it writes no answer, which it does when it tries another tool call instead, the lookup's
+    summary is the answer.
+  - Tool calls it wasn't offered, or got wrong, are left out of the reply.
+  - A request to change something starts with a fixed sentence saying the assistant can only read.
+- **Context window.** Gemini Nano has about 6,000 tokens. The largest prompt in the evals is about
+  830 tokens. Page text is cut to 1,500 characters and history to the last 6 messages.
+- **Tool calls are emulated.** Native tool calling in the Prompt API is still behind a flag.
+  `@browser-ai/core` describes the tools in the system prompt and parses fenced JSON calls, one per
+  step. It's noticeably less reliable than Claude at multi-step lookups.
+- **Hardware.** Chrome on Windows, macOS 13+, Linux or ChromeOS (Chromebook Plus), 22 GB free disk,
+  and a GPU with more than 4 GB of VRAM (or 16 GB of RAM and 4 cores). The panel says when it can't
+  run.
+- **First question.** Loading Python and the server takes about 8 s, so the offscreen document
+  starts when the chat opens. After that a tool call takes tens of milliseconds plus Okta's response
+  time.
+
 ## How it works
 
 ```
@@ -405,7 +488,7 @@ example), add it to
 npm run check      # vp check: format + lint (whole workspace)
 npm run typecheck
 npm test           # unit tests + server integration tests
-npm run test:e2e   # builds the extension and runs both browser tests
+npm run test:e2e   # builds the extension and runs the browser tests
 ```
 
 The e2e test (`extension/e2e/smoke.ts`) needs Playwright's Chromium (`npx playwright install chromium`).
@@ -427,6 +510,12 @@ their history. Screenshots are saved to `extension/e2e/*.png`.
 - **`extension/e2e/chat.ts`** runs the real server in-process with a slow scripted model. It asks a
   question, navigates to another page mid-answer, and checks that the answer resumes and finishes,
   history survives a reload without duplicates, and the page context reached the server.
+- **`extension/e2e/onDevice.ts`** runs the on-device assistant, with no server. It uses the real
+  `okta-mcp-server` on Pyodide in the offscreen document, against a fake Okta API on the admin
+  console, with a scripted stand-in for `LanguageModel` (Playwright's Chromium has no Gemini Nano).
+  The only setting it changes is the assistant mode. It checks that the guide's tool runs, the
+  call goes from Python through the tab as a GET with the admin's session cookie and no token, the
+  answer streams into the panel, and every prompt fits Nano's context window.
 
 **`npm run verify:okta-mcp -w @oktamax/server`** checks the gateway against the **real**
 `okta-mcp-server` (it needs `uv`). It starts two admins' processes against a fake HTTPS Okta and
@@ -455,11 +544,50 @@ cd extension
 npx vpx e2e/okta.ts            # check both accounts can sign in (sessions are kept in e2e/.profiles)
 npx vpx e2e/seed.ts            # as the super admin, create "Oktamax …" test objects (re-runnable)
 npm run build && npx vpx e2e/live.ts   # as the read-only admin, open every view; screenshots in e2e/live/
+npm run build && npx vpx e2e/liveOnDevice.ts   # the on-device assistant reads the org (scripted model)
 ```
 
 The seed only creates new objects, and scopes its policies to a test group or test app. Policy
 changes are Okta "protected actions", so the scripts answer the step-up pop-up with the admin's
 password and TOTP code.
+
+### Evals for the on-device assistant
+
+`extension/evals/` scores the on-device assistant with the real Gemini Nano, in Google Chrome
+rather than Playwright's Chromium, which has no Nano. Okta's MCP server runs on Pyodide as in the
+extension, and the org is the live one in `.env`, read as the read-only admin.
+
+```sh
+cd extension
+npm run build && npm run evals                  # every case
+npm run evals -- user-count saml-apps           # some of them
+```
+
+- **Chrome:** the runner starts Chrome with its own data folder, `~/.cache/oktamax-evals/chrome`
+  (or set `EVAL_CHROME_PROFILE`). Chrome won't allow remote debugging on its default folder, and
+  branded Chrome ignores `--load-extension`, so the extension is loaded over the DevTools protocol
+  (`Extensions.loadUnpacked`).
+- **The model:** the first run clicks Download on the extension's model page, which takes a few
+  minutes. The model stays in that folder for later runs, as does the Okta session.
+- **Cases:** `evals/cases.ts` gives each question the page it's asked on, the tools a good answer
+  uses, and the facts its answer must contain. The facts are read from the org when the eval runs,
+  so they stay right as the org changes.
+- **Measured:**
+  - which tools were called, with what input, and whether they failed;
+  - whether the answer contains the facts;
+  - total time, and the time and context size of each Prompt API call (timed in the service
+    worker).
+
+  A table goes to the terminal and the details, including each answer, to
+  `evals/results/<time>.json`.
+  With `TIMINGS=1`, it also prints the MCP connection, each Okta call, and each Prompt API session
+  and prompt.
+
+- **Results** on the integrator org (12 cases): giving Nano okta-mcp-server's tools directly passed
+  2; with the guide, 10–11 pass from run to run, and the largest prompt fell from about 5,300
+  tokens to about 830. Answers took a median of 10–56 s, varying between runs. Most of that time
+  is Nano starting a session after being idle for 10 s or more, which takes 2–25 s. Neither keeping
+  a session open nor cloning one avoided it.
 
 ## Known limitations
 
