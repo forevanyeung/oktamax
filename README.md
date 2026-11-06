@@ -228,6 +228,7 @@ The gateway (`server/src/mcp/`) hosts it for many admins **without modifying it*
 | Resources              | Processes are reused across requests, closed after `OKTA_MCP_IDLE_MINUTES` (default 10) of idleness, and capped at `OKTA_MCP_MAX_PROCESSES` (default 50; when full, the least recently used idle one is closed).                                                                                                                                               |
 | Start-up               | At startup the server runs `okta-mcp-server` once, so `uvx` has downloaded it and Python before anyone asks (the log says `Okta MCP: ready`). Admins' processes share the server user's uv cache (`UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`) rather than their temporary `HOME`. An admin's process starts when they open the chat, not at their first question. |
 | Token lifetime         | `/mcp/<org>` refuses tokens with under 2 minutes left (Okta's server treats a token within 60 s of expiry as expired). The extension renews tokens 10 minutes before they expire; MCP clients are told to refresh theirs (`error="invalid_token"`).                                                                                                            |
+| Personal data          | Every tool call goes through the gateway's [hooks](#hooks-what-the-mcp-servers-withhold). By default they redact personal data (dates of birth, phone numbers, street addresses, government ID numbers) from results.                                                                                                                                          |
 
 Each process is a Python interpreter, roughly 50–100 MB. That's sized for a team of admins, not
 thousands of concurrent users.
@@ -244,6 +245,60 @@ The tools available with the default scopes are:
 
 `okta-mcp-server` has no tools yet for network zones, authenticators, group rules, identity
 providers or authorization servers, so the assistant can't answer questions about those.
+
+### Hooks: what the MCP servers withhold
+
+Every tool call through `/mcp/<org>`, from the assistant or from an admin's own MCP client, goes
+through the gateway's hooks (`server/src/mcp/hooks/`). A hook can hide tools, refuse a call before
+it reaches Okta's server, rewrite the result before it reaches the client, and tell the model what
+it does. Its instructions are sent as the MCP server's `instructions`, and the assistant adds them
+to its system prompt.
+
+Without configuration, one hook runs: `redact`, with the `pii` preset. It replaces these with
+`[redacted]`:
+
+- **Fields**, wherever they appear in a result: dates of birth (`*birthdate*`, `dob`, …), phone
+  numbers (`*phone*`, `mobile`, `fax*`), street addresses (`streetAddress`, `postalAddress`,
+  `zipCode`, …) and government ID numbers (`ssn`, `nationalId*`, `passport*`, …). Only values are
+  replaced: an object under a matching name, like a policy's `phone` settings, is kept and searched
+  further.
+- **Patterns**, in any text: phone numbers and US Social Security numbers.
+
+It also refuses calls that search or filter on those fields (`profile.mobilePhone eq "…"`), so the
+data can't be found out by searching for it. City, state, country, names and emails are kept.
+
+To change this, point `MCP_HOOKS_FILE` at a JSON file (see `server/mcp-hooks.example.json`). Its
+hooks replace the default and run in order; `{ "hooks": [] }` turns them all off.
+
+```json
+{
+  "hooks": [
+    {
+      "type": "redact",
+      "fields": ["employeeNumber", "profile.city"],
+      "patterns": ["email", { "name": "badge IDs", "regex": "B-\\d{6}" }],
+      "allow": ["zipCode"]
+    },
+    { "type": "blockTools", "tools": ["list_system_logs"], "orgs": ["acme.okta.com"] },
+    { "type": "module", "path": "./hooks/my-hook.ts", "options": { "level": "strict" } }
+  ]
+}
+```
+
+| Type         | Options                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `redact`     | `preset`: `"pii"` (default) or `"none"`. `fields`: more field names to redact (case-insensitive, `*` globs; with a dot, `profile.city`, they match the end of the field's path). `patterns`: more patterns to redact in any text, by name (`phone`, `ssn`, `email`) or as `{ "name", "regex", "flags" }`. `allow`: preset fields or patterns to keep (`"zipCode"`, `"phone"`, `"*birth*"`). `replacement`: default `"[redacted]"`. `blockFilters`: refuse searches on redacted fields (default `true`). |
+| `blockTools` | `tools`: tool names or globs to hide, e.g. `["list_system_logs", "*_brand*"]`.                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `module`     | `path`: a JavaScript or TypeScript file, relative to the hooks file, whose default export takes `options` and returns a hook (`ToolHook` in `server/src/mcp/hooks/index.ts`: `allowTool`, `beforeCall`, `afterCall`, `instructions`).                                                                                                                                                                                                                                                                   |
+
+Every entry can also have `orgs` (apply only to these org hosts) and `instructions` (replace what the
+hook tells the model). New built-in hook types go in `HOOK_TYPES` in `server/src/mcp/hooks/index.ts`.
+The server prints the hooks in use at startup (`MCP hooks: redact, …`), and won't start if the file
+is invalid.
+
+Hooks only see what passes through the MCP server. The page text the extension sends with each
+question comes from the admin's own screen and isn't redacted. The on-device assistant doesn't use
+the chat server and doesn't run these hooks either.
 
 ### More than one org
 

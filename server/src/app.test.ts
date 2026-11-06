@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vite-plus/test';
 
 import { createApp } from './app';
 import { MemoryChatStore } from './chat/store';
+import { ToolHooks } from './mcp/hooks';
 import { fakeOktaMcpPool, mockOkta, scriptedModel, TEST_CLIENT_ID, TEST_ORG } from './testing';
 
 const okta = mockOkta();
@@ -32,7 +33,12 @@ beforeAll(async () => {
   server = serve({ fetch: (request) => app!.fetch(request), port: 0 });
   await new Promise((resolve) => server.once('listening', resolve));
   base = `http://localhost:${(server.address() as AddressInfo).port}`;
-  app = createApp({ model, store: new MemoryChatStore(), mcpUrl: `${base}/mcp`, oktaMcp });
+  // The default hooks (redact personal data), and one org that hides get_user.
+  const hooks = await ToolHooks.create([
+    { type: 'redact' },
+    { type: 'blockTools', tools: ['get_user'], orgs: ['other.okta.com'] },
+  ]);
+  app = createApp({ model, store: new MemoryChatStore(), mcpUrl: `${base}/mcp`, oktaMcp, hooks });
 });
 
 afterAll(async () => {
@@ -120,7 +126,7 @@ describe('Okta MCP gateway', () => {
   it('exposes only read-only tools, even when the token has a write scope', async () => {
     const client = await mcpClient('token-ada');
     const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names).toEqual(['list_users']);
+    expect(names).toEqual(['list_users', 'get_user']);
     await client.close();
   });
 
@@ -129,6 +135,54 @@ describe('Okta MCP gateway', () => {
     const result = await client.callTool({ name: 'delete_everything', arguments: {} });
     expect(result.isError).toBe(true);
     expect(JSON.stringify(result.content)).toContain('read-only');
+    await client.close();
+  });
+
+  it('redacts personal data from tool results', async () => {
+    const client = await mcpClient('token-bob');
+    const result = await client.callTool({ name: 'get_user', arguments: { userId: '00u1' } });
+    await client.close();
+    const user = JSON.parse((result.content as Array<{ text: string }>)[0]!.text);
+    expect(user).toEqual({
+      id: '00u1',
+      profile: {
+        login: 'ada@example.com',
+        city: 'Springfield',
+        mobilePhone: '[redacted]',
+        birthdate: '[redacted]',
+        streetAddress: '[redacted]',
+      },
+      note: 'Call [redacted] after hours',
+    });
+  });
+
+  it('refuses searches on redacted fields', async () => {
+    const client = await mcpClient('token-bob');
+    const result = await client.callTool({
+      name: 'list_users',
+      arguments: { search: 'profile.birthdate sw "1990"' },
+    });
+    await client.close();
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('profile.birthdate');
+  });
+
+  it("applies an org's own hooks only to that org", async () => {
+    const client = await mcpClient('other-token-bob', 'other.okta.com');
+    expect((await client.listTools()).tools.map((t) => t.name)).toEqual(['list_users']);
+    const result = await client.callTool({ name: 'get_user', arguments: { userId: '00u1' } });
+    expect(result.isError).toBe(true);
+    await client.close();
+  });
+
+  it('tells MCP clients what it withholds', async () => {
+    const client = new Client({ name: 'test', version: '0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${base}/mcp/acme.okta.com`), {
+        requestInit: { headers: auth('token-bob') },
+      }),
+    );
+    expect(client.getInstructions()).toContain('dates of birth');
     await client.close();
   });
 
@@ -253,7 +307,7 @@ describe('MCP clients signing in', () => {
     await mcp.connect(
       new StreamableHTTPClientTransport(new URL(serverUrl()), { authProvider: client }),
     );
-    expect((await mcp.listTools()).tools.map((t) => t.name)).toEqual(['list_users']);
+    expect((await mcp.listTools()).tools.map((t) => t.name)).toEqual(['list_users', 'get_user']);
     await mcp.close();
 
     // The code is single-use.
@@ -396,6 +450,11 @@ describe('chat', () => {
     const firstUser = lastCall.prompt.find((m) => m.role === 'user');
     expect(JSON.stringify(firstUser)).toContain('<page_context>');
     expect(JSON.stringify(firstUser)).toContain('https://acme-admin.okta.com/admin/users');
+  });
+
+  it("tells the model what the MCP server's hooks withhold", async () => {
+    const system = model.doStreamCalls.at(-1)!.prompt.find((m) => m.role === 'system');
+    expect(JSON.stringify(system)).toContain('withholds personal data');
   });
 
   it('needs to know the org when the server serves more than one', async () => {

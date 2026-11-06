@@ -5,17 +5,20 @@
  *
  * Each request is authenticated against that org (see `auth.ts`), then served
  * by that admin's own okta-mcp-server process from the pool. On top of the read-only token
- * scopes, the gateway only exposes – and only forwards calls to – read tools.
+ * scopes, the gateway only exposes – and only forwards calls to – read tools, and
+ * runs every call through the org's hooks (`hooks/`), e.g. to redact personal data.
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  type CallToolResult,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import type { Principal } from '../auth';
+import { ToolHooks } from './hooks';
 import type { OktaMcpProcessPool } from './processPool';
 
 /**
@@ -34,6 +37,7 @@ export async function handleMcpRequest(
   request: Request,
   principal: Principal,
   pool: OktaMcpProcessPool,
+  hooks: ToolHooks = new ToolHooks(),
   expiring = () => Response.json({ error: 'token_expiring' }, { status: 401 }),
 ): Promise<Response> {
   if (principal.expiresAt * 1000 - Date.now() < MIN_TOKEN_LIFETIME_MS) return expiring();
@@ -42,9 +46,10 @@ export async function handleMcpRequest(
   let lease: ReturnType<OktaMcpProcessPool['acquire']> | undefined;
   const upstream = async () => (await (lease ??= pool.acquire(principal))).client;
 
+  const orgHooks = hooks.for(principal.org.host);
   const server = new Server(
     { name: 'okta-readonly', version: '0.1.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: orgHooks.instructions },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -59,7 +64,7 @@ export async function handleMcpRequest(
 
     return {
       tools: tools
-        .filter((tool) => isReadOnlyTool(tool.name))
+        .filter((tool) => isReadOnlyTool(tool.name) && orgHooks.allowTool(tool.name))
         .map((tool) => ({
           ...tool,
           annotations: { ...tool.annotations, readOnlyHint: true, destructiveHint: false },
@@ -76,8 +81,11 @@ export async function handleMcpRequest(
         ],
       };
     }
-    const client = await upstream();
-    return client.callTool({ name: call.params.name, arguments: call.params.arguments });
+    const toolCall = { name: call.params.name, arguments: call.params.arguments ?? {} };
+    return orgHooks.call(toolCall, { principal }, async () => {
+      const client = await upstream();
+      return (await client.callTool(toolCall)) as CallToolResult;
+    });
   });
 
   const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });

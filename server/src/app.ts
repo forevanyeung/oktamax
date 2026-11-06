@@ -8,6 +8,7 @@ import { requireAuth } from './auth';
 import { createChatRoutes, type ChatDeps } from './chat/routes';
 import { config } from './config';
 import { handleMcpRequest } from './mcp/gateway';
+import type { ToolHooks } from './mcp/hooks';
 import { createOAuthRoutes, signInChallenge } from './mcp/oauth';
 import type { OktaMcpProcessPool } from './mcp/processPool';
 
@@ -16,7 +17,13 @@ const OPEN_PATHS = /^\/(mcp|oauth|\.well-known)\//;
 
 const requestLog = logger();
 
-export const createApp = (deps: ChatDeps & { oktaMcp: OktaMcpProcessPool }) =>
+export const createApp = (
+  deps: ChatDeps & {
+    oktaMcp: OktaMcpProcessPool;
+    /** Rules for every MCP tool call (`mcp/hooks/`). None when left out. */
+    hooks?: ToolHooks;
+  },
+) =>
   new Hono()
     // Health checks arrive every few seconds and drown out real requests.
     .use((c, next) => (c.req.path === '/health' && !config.debug ? next() : requestLog(c, next)))
@@ -42,7 +49,7 @@ export const createApp = (deps: ChatDeps & { oktaMcp: OktaMcpProcessPool }) =>
       '/mcp/:org',
       requireAuth((c) => config.org(c.req.param('org') ?? ''), signInChallenge),
       (c) =>
-        handleMcpRequest(c.req.raw, c.var.principal, deps.oktaMcp, () =>
+        handleMcpRequest(c.req.raw, c.var.principal, deps.oktaMcp, deps.hooks, () =>
           signInChallenge(c, c.var.principal.org, 'invalid_token'),
         ),
     )
