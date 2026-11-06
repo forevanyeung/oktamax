@@ -6,6 +6,7 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app';
 import { MemoryChatStore } from './chat/store';
 import { config } from './config';
+import { ToolHooks } from './mcp/hooks';
 import { OktaMcpProcessPool } from './mcp/processPool';
 
 const model =
@@ -18,9 +19,11 @@ const model =
       })(config.model.modelId);
 
 const oktaMcp = new OktaMcpProcessPool(config.oktaMcp);
+const hooks = await ToolHooks.load(config.mcpHooksFile);
 
 const app = createApp({
   oktaMcp,
+  hooks,
   model,
   store: new MemoryChatStore(),
   mcpUrl: config.mcpUrl,
@@ -35,6 +38,7 @@ const server = serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
     config.model.provider === 'anthropic' ? 'Anthropic API' : `Bedrock, ${config.model.region}`;
   console.log(`  Model:     ${config.model.modelId} (${where})`);
   console.log(`  Okta MCP:  ${config.oktaMcp.command} ${config.oktaMcp.args.join(' ')}`);
+  console.log(`  MCP hooks: ${hooks.names.join(', ') || 'none'}`);
   // Have okta-mcp-server (with uvx, its download) ready before the first question.
   oktaMcp.warmUp(config.orgs[0]!).then(
     (ms) => console.log(`  Okta MCP:  ready (${(ms / 1000).toFixed(1)}s)`),

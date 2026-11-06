@@ -101,7 +101,7 @@ export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
 
     const result = streamText({
       model,
-      instructions: instructions(principal.username),
+      instructions: instructions(principal.username, mcp.instructions),
       messages: await convertToModelMessages(withPageContext(chat.messages), {
         ignoreIncompleteToolCalls: true,
       }),

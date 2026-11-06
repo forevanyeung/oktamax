@@ -1,0 +1,14 @@
+{
+  "hooks": [
+    {
+      "type": "redact",
+      "preset": "pii",
+      "fields": ["employeeNumber"],
+      "patterns": [],
+      "allow": [],
+      "replacement": "[redacted]",
+      "blockFilters": true
+    },
+    { "type": "blockTools", "tools": ["list_system_logs"], "orgs": ["acme.okta.com"] }
+  ]
+}

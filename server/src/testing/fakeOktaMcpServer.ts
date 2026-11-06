@@ -5,7 +5,8 @@
  *   - the access token is read from the keyring on every call (here: the same
  *     OKTAMAX_TOKEN_FILE our Python keyring backend reads),
  *   - tools are registered according to OKTA_SCOPES at startup,
- *   - there are write tools (`create_user`) the gateway must never expose.
+ *   - there are write tools (`create_user`) the gateway must never expose,
+ *   - `get_user` returns personal data the gateway's hooks must redact.
  *
  * `list_users` reports which token, org, process and HOME served it, so tests
  * can check admins (and orgs) are isolated from each other.
@@ -38,6 +39,24 @@ if (scopes.has('okta.users.read')) {
           pid: process.pid,
           home: process.env.HOME,
         },
+      }),
+  );
+}
+if (scopes.has('okta.users.read')) {
+  server.registerTool(
+    'get_user',
+    { description: 'Get a user', inputSchema: { userId: z.string() } },
+    async ({ userId }) =>
+      json({
+        id: userId,
+        profile: {
+          login: 'ada@example.com',
+          city: 'Springfield',
+          mobilePhone: '+1 555 010 0199',
+          birthdate: '1990-01-01',
+          streetAddress: '1 Main St',
+        },
+        note: 'Call 555-010-0199 after hours',
       }),
   );
 }

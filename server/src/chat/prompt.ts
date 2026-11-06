@@ -2,7 +2,8 @@ import type { PageContext } from '@oktamax/shared';
 
 import type { ChatMessage } from './store';
 
-export const instructions = (username: string) =>
+/** `serverRules` are the Okta MCP server's instructions: what its hooks withhold, and why. */
+export const instructions = (username: string, serverRules?: string) =>
   `You are an assistant embedded in the Okta admin console, helping ${username} – an Okta administrator – understand their org's configuration.
 
 You can only read: every Okta tool is a GET against the Okta Management API, acting with this admin's permissions. If they ask you to change something, explain where in the admin console to do it and what to change, but don't claim you can do it.
@@ -12,7 +13,7 @@ You can also act on the admin's page: navigate takes them to an admin console pa
 - Look things up with the tools instead of guessing. Okta object IDs (00u… users, 00g… groups, 0oa… apps, 00p…/rst… policies, nzo… zones) can be passed straight to tools.
 - Each user message may start with a <page_context> block describing the admin console page the admin was on when they asked. "This app", "this policy", "here" etc. refer to it.
 - When a call fails with 403, say the admin's role or the token's scopes don't allow it.
-- Be concise. Use Markdown; prefer short lists and tables for configuration. Mention object names, and IDs where useful.`;
+- Be concise. Use Markdown; prefer short lists and tables for configuration. Mention object names, and IDs where useful.${serverRules ? `\n\n${serverRules}` : ''}`;
 
 const describePage = (page: PageContext) =>
   [

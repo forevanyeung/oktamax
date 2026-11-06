@@ -108,6 +108,11 @@ export const config = {
         join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'uv', 'python'),
     },
   },
+  /**
+   * JSON file of hooks every MCP tool call goes through (`mcp/hooks/`). Without one,
+   * personal data (dates of birth, phone numbers, addresses, ID numbers) is redacted.
+   */
+  mcpHooksFile: process.env.MCP_HOOKS_FILE,
   /** Where the chat route reaches the MCP gateway (`<mcpUrl>/<org host>`). Defaults to this process. */
   mcpUrl: process.env.MCP_URL ?? `http://localhost:${process.env.PORT ?? 8787}/mcp`,
 };
