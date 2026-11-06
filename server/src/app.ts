@@ -15,6 +15,8 @@ import type { OktaMcpProcessPool } from './mcp/processPool';
 /** Paths MCP clients use, which may be web apps on any origin: the MCP servers and sign-in. */
 const OPEN_PATHS = /^\/(mcp|oauth|\.well-known)\//;
 
+const requestLog = logger();
+
 export const createApp = (
   deps: ChatDeps & {
     oktaMcp: OktaMcpProcessPool;
@@ -23,7 +25,8 @@ export const createApp = (
   },
 ) =>
   new Hono()
-    .use(logger())
+    // Health checks arrive every few seconds and drown out real requests.
+    .use((c, next) => (c.req.path === '/health' && !config.debug ? next() : requestLog(c, next)))
     // The extension calls from its service worker (chrome-extension:// origin). MCP
     // clients like Claude Desktop don't send an Origin at all; web-based ones may.
     // Tokens travel in headers, never cookies, so any origin can call those paths.

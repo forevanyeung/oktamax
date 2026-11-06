@@ -59,6 +59,8 @@ const orgs = readOrgs();
 
 export const config = {
   port: Number(process.env.PORT ?? 8787),
+  /** LOG_LEVEL=debug also logs health checks, which are otherwise left out of the request log. */
+  debug: process.env.LOG_LEVEL === 'debug',
   /** The orgs whose admins use this server. Each has its own MCP server at `/mcp/<host>`. */
   orgs,
   /** The configured org with this host (acme.okta.com), if any. */
