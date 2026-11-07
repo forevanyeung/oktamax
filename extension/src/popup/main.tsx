@@ -60,9 +60,25 @@ const ModelStatus = () => {
   );
 };
 
+/**
+ * Whether the active tab is the admin console, matching the manifest's content
+ * scripts. Without the `tabs` permission Chrome only reveals the URL of tabs on
+ * our host permissions, so other pages come back without one.
+ */
+const onAdminConsole = async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.url) return false;
+  const { protocol, hostname } = new URL(tab.url);
+  return (
+    protocol === 'https:' &&
+    /^[^.]+-admin\.(okta|oktapreview|okta-emea|okta-gov)\.com$/.test(hostname)
+  );
+};
+
 void watchDarkMode((dark) => (document.documentElement.dataset.theme = dark ? 'dark' : 'light'));
 
 const Popup = () => {
+  const [onOkta, setOnOkta] = useState<boolean>();
   const [settings, setSettings] = useState<Settings>();
   const [serverUrl, setServerUrl] = useState('');
   const [serverError, setServerError] = useState<string>();
@@ -70,6 +86,7 @@ const Popup = () => {
   const [managed, setManaged] = useState<Partial<Settings>>({});
 
   useEffect(() => {
+    void onAdminConsole().then(setOnOkta);
     void loadSettings().then((s) => {
       setSettings(s);
       setServerUrl(s.chatServerUrl);
@@ -102,12 +119,26 @@ const Popup = () => {
     setSaved(true);
   };
 
+  const header = (
+    <header>
+      <img src="/icons/icon-32.png" width={32} height={32} alt="" />
+      <h1>Okta Max</h1>
+    </header>
+  );
+
+  if (onOkta === undefined) return null;
+  if (!onOkta) {
+    return (
+      <main>
+        {header}
+        <p>Switch to the Okta admin console to open Okta Max.</p>
+      </main>
+    );
+  }
+
   return (
     <main>
-      <header>
-        <img src="/icons/icon-32.png" width={32} height={32} alt="" />
-        <h1>Okta Max</h1>
-      </header>
+      {header}
       <p>
         Adds a view icon wherever the admin console hides an Edit button, opening the same form
         read-only, and an assistant you can ask about the org.
