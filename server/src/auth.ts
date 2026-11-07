@@ -37,6 +37,9 @@ interface Introspection {
 }
 
 const CACHE_MS = 60_000;
+/** Most introspections remembered at once: anyone can present a token. */
+const MAX_CACHED = 10_000;
+/** Oldest first: entries are deleted before they're set again, so they stay in time order. */
 const cache = new Map<string, { at: number; principal: Principal | null }>();
 
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -59,10 +62,10 @@ export async function authenticate(org: OktaOrg, token: string): Promise<Princip
       client_id: org.clientId,
     }),
   });
-  const info = (await res.json().catch(() => ({ active: false }))) as Introspection;
+  const info = (await res.json().catch(() => null)) as Introspection | null;
 
   const principal =
-    res.ok && info.active && info.client_id === org.clientId && (info.uid ?? info.sub)
+    res.ok && info?.active && info.client_id === org.clientId && (info.uid ?? info.sub)
       ? {
           org,
           userId: (info.uid ?? info.sub)!,
@@ -73,7 +76,16 @@ export async function authenticate(org: OktaOrg, token: string): Promise<Princip
         }
       : null;
 
-  cache.set(key, { at: Date.now(), principal });
+  // Only Okta's answer is remembered: a 429, 5xx or garbled reply is retried next time.
+  if (!res.ok || typeof info?.active !== 'boolean') return principal;
+  const now = Date.now();
+  cache.delete(key);
+  // Drop expired entries, then the oldest while full.
+  for (const [k, v] of cache) {
+    if (now - v.at < CACHE_MS && cache.size < MAX_CACHED) break;
+    cache.delete(k);
+  }
+  cache.set(key, { at: now, principal });
   return principal;
 }
 
