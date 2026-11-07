@@ -69,6 +69,8 @@ async function main() {
     }),
   );
 
+  await worker.evaluate(() => chrome.storage.sync.set({ assistant: 'server' }));
+
   const page = await context.newPage();
   page.on('console', (m) => m.type() === 'error' && console.log('[page error]', m.text()));
 

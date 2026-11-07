@@ -23,6 +23,7 @@ const THEMES: Array<[Theme, string]> = [
 ];
 
 const ASSISTANTS: Array<[AssistantMode, string]> = [
+  ['off', 'Off'],
   ['server', 'Chat server'],
   ['onDevice', 'On-device'],
 ];
@@ -76,6 +77,7 @@ const Popup = () => {
     void loadManagedSettings().then(setManaged);
   }, []);
   const serverManaged = managed.chatServerUrl !== undefined;
+  const assistantManaged = managed.assistant !== undefined;
 
   const update = (change: Partial<Settings>) => {
     setSettings((current) => current && { ...current, ...change });
@@ -165,6 +167,7 @@ const Popup = () => {
                 name="assistant"
                 value={value}
                 checked={settings.assistant === value}
+                disabled={assistantManaged}
                 onChange={() => update({ assistant: value })}
               />
               {label}
@@ -172,6 +175,7 @@ const Popup = () => {
           ))}
         </fieldset>
       )}
+      {assistantManaged && <small>Set by your organization.</small>}
       {settings?.assistant === 'onDevice' && (
         <div className="server">
           <small>Runs in Chrome, with Client-side AI.</small>
@@ -187,9 +191,7 @@ const Popup = () => {
           }}
         >
           <label htmlFor="server-url">Chat server URL</label>
-          <small>
-            {serverManaged ? 'Set by your organization.' : 'Leave empty to turn the assistant off.'}
-          </small>
+          {serverManaged && <small>Set by your organization.</small>}
           <div>
             <input
               id="server-url"

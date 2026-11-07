@@ -71,23 +71,26 @@ The toolbar popup has these settings:
 - **Show view icons next to Edit buttons too**: turn it on as a full admin to compare the view
   dialogs with the real edit dialogs side by side.
 - **Show the API console**: the drawer described below (on by default).
+- **Assistant**: **Off** (the default), **Chat server**, or **On-device** (in Chrome, with Gemini
+  Nano).
 - **Chat server URL**: where the assistant's server runs (default `http://localhost:8787`). Chrome
   asks for permission to reach it. Leave it empty to turn the assistant off.
 
-### Setting the chat server for your organization
+### Setting the assistant for your organization
 
-The chat server URL can be enforced by policy, so admins don't have to enter it. In the Google Admin
+The assistant and the chat server URL can be enforced by policy, so admins don't have to set them. In the Google Admin
 console, go to **Devices › Chrome › Apps & extensions › Users & browsers**, select Okta Max, and
 under **Policy for extensions** paste:
 
 ```json
-{ "chatServerUrl": "https://oktamax.example.com" }
+{ "assistant": "server", "chatServerUrl": "https://oktamax.example.com" }
 ```
 
-An empty string turns the assistant off. A URL set this way overrides the popup setting, which then
-shows it read-only. Chrome doesn't ask for permission to reach it; the server's CORS policy already
+`assistant` is `off`, `server` or `onDevice`; use `{ "assistant": "off" }` to turn the assistant off
+for everyone. An empty `chatServerUrl` turns it off too. Values set this way override the popup
+settings, which then show them read-only. Chrome doesn't ask for permission to reach it; the server's CORS policy already
 allows the extension. Other management tools (Intune, Jamf, Group Policy) can set the same
-`chatServerUrl` key; its schema is `extension/public/managed_schema.json`.
+keys; its schema is `extension/public/managed_schema.json`.
 
 Where Edit is an item of an **Actions** menu, a **View** item is added to the same menu (its tooltip
 says it comes from Okta Max). Where Okta leaves that menu out for read-only admins (Authenticators,

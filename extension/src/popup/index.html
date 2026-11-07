@@ -90,6 +90,10 @@
         color: var(--accent);
         font-weight: 600;
       }
+      .theme label:has(:disabled) {
+        cursor: default;
+        opacity: 0.6;
+      }
       .theme label:has(:focus-visible) {
         outline: 2px solid var(--accent);
         outline-offset: 1px;
@@ -98,6 +102,9 @@
         position: absolute;
         opacity: 0;
         pointer-events: none;
+      }
+      .theme + small {
+        margin-top: -10px;
       }
       .switch {
         display: flex;
