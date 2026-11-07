@@ -76,7 +76,9 @@ async function authStatus(
   interactive: boolean,
   sender: chrome.runtime.MessageSender,
 ): Promise<AuthStatus> {
-  if ((await loadSettings()).assistant === 'onDevice') return onDeviceStatus(sender);
+  const { assistant } = await loadSettings();
+  if (assistant === 'off') return { state: 'off' };
+  if (assistant === 'onDevice') return onDeviceStatus(sender);
   let server: Awaited<ReturnType<typeof serverConfig>>;
   try {
     server = await serverConfig();
@@ -113,7 +115,9 @@ async function forward(
   sender: chrome.runtime.MessageSender,
   signal: AbortSignal,
 ): Promise<Response> {
-  if ((await loadSettings()).assistant === 'onDevice') {
+  const { assistant } = await loadSettings();
+  if (assistant === 'off') throw new Error('The assistant is off');
+  if (assistant === 'onDevice') {
     if (new URL(request.url).origin !== ON_DEVICE_CHAT_URL) {
       throw new Error('Request is not for the on-device assistant');
     }
@@ -192,4 +196,12 @@ chrome.runtime.onConnect.addListener((port) => {
       })
       .finally(() => open && port.disconnect());
   });
+});
+
+// The assistant is off by default for new installs. Installs from before it could be turned off
+// used the chat server, so keep them on it.
+chrome.runtime.onInstalled.addListener(async ({ reason }) => {
+  if (reason !== 'update') return;
+  const { assistant } = await chrome.storage.sync.get('assistant');
+  if (assistant === undefined) await chrome.storage.sync.set({ assistant: 'server' });
 });

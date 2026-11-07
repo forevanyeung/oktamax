@@ -1,6 +1,12 @@
 {
   "type": "object",
   "properties": {
+    "assistant": {
+      "title": "Assistant",
+      "description": "Where the assistant runs: \"off\", \"server\" (the chat server) or \"onDevice\" (in Chrome, with Gemini Nano). When set, admins can't change it in the popup.",
+      "type": "string",
+      "enum": ["off", "server", "onDevice"]
+    },
     "chatServerUrl": {
       "title": "Chat server URL",
       "description": "Base URL of the Okta Max chat server, e.g. https://oktamax.example.com. An empty string turns the assistant off. When set, admins can't change it in the popup.",
