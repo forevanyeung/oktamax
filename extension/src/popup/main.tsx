@@ -129,7 +129,7 @@ const Popup = () => {
     return (
       <main>
         {header}
-        <p>Okta admin console not detected. Open this on an Okta admin console page.</p>
+        <p>Switch to the Okta admin console to open Okta Max.</p>
       </main>
     );
   }
