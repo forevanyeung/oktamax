@@ -77,7 +77,7 @@ const onAdminConsole = async () => {
 void watchDarkMode((dark) => (document.documentElement.dataset.theme = dark ? 'dark' : 'light'));
 
 const Popup = () => {
-  const [onOkta, setOnOkta] = useState(false);
+  const [onOkta, setOnOkta] = useState<boolean>();
   const [settings, setSettings] = useState<Settings>();
   const [serverUrl, setServerUrl] = useState('');
   const [serverError, setServerError] = useState<string>();
@@ -117,15 +117,26 @@ const Popup = () => {
     setSaved(true);
   };
 
-  // Nothing to configure away from the admin console.
-  if (!onOkta) return null;
+  const header = (
+    <header>
+      <img src="/icons/icon-32.png" width={32} height={32} alt="" />
+      <h1>Okta Max</h1>
+    </header>
+  );
+
+  if (onOkta === undefined) return null;
+  if (!onOkta) {
+    return (
+      <main>
+        {header}
+        <p>Okta admin console not detected. Open this on an Okta admin console page.</p>
+      </main>
+    );
+  }
 
   return (
     <main>
-      <header>
-        <img src="/icons/icon-32.png" width={32} height={32} alt="" />
-        <h1>Okta Max</h1>
-      </header>
+      {header}
       <p>
         Adds a view icon wherever the admin console hides an Edit button, opening the same form
         read-only, and an assistant you can ask about the org.
