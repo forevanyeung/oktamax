@@ -59,9 +59,25 @@ const ModelStatus = () => {
   );
 };
 
+/**
+ * Whether the active tab is the admin console, matching the manifest's content
+ * scripts. Without the `tabs` permission Chrome only reveals the URL of tabs on
+ * our host permissions, so other pages come back without one.
+ */
+const onAdminConsole = async () => {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.url) return false;
+  const { protocol, hostname } = new URL(tab.url);
+  return (
+    protocol === 'https:' &&
+    /^[^.]+-admin\.(okta|oktapreview|okta-emea|okta-gov)\.com$/.test(hostname)
+  );
+};
+
 void watchDarkMode((dark) => (document.documentElement.dataset.theme = dark ? 'dark' : 'light'));
 
 const Popup = () => {
+  const [onOkta, setOnOkta] = useState(false);
   const [settings, setSettings] = useState<Settings>();
   const [serverUrl, setServerUrl] = useState('');
   const [serverError, setServerError] = useState<string>();
@@ -69,6 +85,7 @@ const Popup = () => {
   const [managed, setManaged] = useState<Partial<Settings>>({});
 
   useEffect(() => {
+    void onAdminConsole().then(setOnOkta);
     void loadSettings().then((s) => {
       setSettings(s);
       setServerUrl(s.chatServerUrl);
@@ -99,6 +116,9 @@ const Popup = () => {
     update({ chatServerUrl: serverUrl.replace(/\/+$/, '') });
     setSaved(true);
   };
+
+  // Nothing to configure away from the admin console.
+  if (!onOkta) return null;
 
   return (
     <main>
