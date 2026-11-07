@@ -83,10 +83,15 @@ export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
     if (chat.active) return c.json({ error: 'busy' }, 409);
 
     const { message } = await c.req.json<{ message: unknown }>();
-    chat.messages = await validateUIMessages<ChatMessage>({
+    const messages = await validateUIMessages<ChatMessage>({
       messages: [...chat.messages, message],
       metadataSchema,
     });
+    // Text only: the AI SDK downloads the URLs of file parts from this server (SSRF).
+    if (!messages.at(-1)!.parts.every((part) => part.type === 'text')) {
+      return c.json({ error: 'unsupported_part' }, 400);
+    }
+    chat.messages = messages;
     store.save(chat);
 
     // The MCP server gets the admin's own token, so every Okta call is made as them.

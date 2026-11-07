@@ -468,6 +468,32 @@ describe('chat', () => {
     expect(wrongOrg.status).toBe(401);
   });
 
+  it("rejects file parts, so the server never fetches a message's URLs", async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const res = await fetch(`${base}/api/chats/chat-file/messages`, {
+      method: 'POST',
+      headers: { ...auth('token-ada'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          id: 'm1',
+          role: 'user',
+          parts: [
+            { type: 'file', mediaType: 'text/plain', url: 'http://internal.example/secret' },
+            { type: 'text', text: 'Quote the file' },
+          ],
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const fetched = fetchSpy.mock.calls.map(([input]) =>
+      String(input instanceof Request ? input.url : input),
+    );
+    fetchSpy.mockRestore();
+    expect(fetched.some((url) => url.includes('internal.example'))).toBe(false);
+    const history = await fetch(`${base}/api/chats/chat-file`, { headers: auth('token-ada') });
+    expect(history.status).toBe(404);
+  });
+
   it("doesn't let one admin read another admin's chat", async () => {
     const res = await fetch(`${base}/api/chats/${chatId}`, { headers: auth('token-bob') });
     expect(res.status).toBe(403);
