@@ -25,7 +25,7 @@ const { MemoryChatStore } = await import('@oktamax/server/store');
 const { fakeOktaMcpPool, mockOkta } = await import('@oktamax/server/testing');
 
 const ADMIN = 'https://acme-admin.okta.com';
-const PORT = 8787; // the extension's default chat server URL
+const PORT = 8787;
 const extensionPath = resolve(import.meta.dirname, '../dist');
 const outDir = resolve(import.meta.dirname, '../../site/screenshots');
 
@@ -614,7 +614,11 @@ async function run(scale: number) {
   await popup.close();
 
   // The assistant on your own chat server (for the site).
-  await worker.evaluate(() => chrome.storage.sync.set({ assistant: 'server' }));
+  await worker.evaluate(
+    (port) =>
+      chrome.storage.sync.set({ assistant: 'server', chatServerUrl: `http://localhost:${port}` }),
+    PORT,
+  );
   await page.goto(`${ADMIN}/admin/users`);
   await page.getByRole('button', { name: 'Open Okta assistant' }).click();
   const panel = page.getByRole('dialog', { name: 'Okta assistant' });

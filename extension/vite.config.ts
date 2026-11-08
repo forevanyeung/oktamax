@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { crx } from '@crxjs/vite-plugin';
 import react from '@vitejs/plugin-react';
@@ -22,6 +23,13 @@ const themeHash = (command: string) => {
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), crx({ manifest })],
+  resolve: {
+    alias: {
+      '@mediapipe/tasks-text': fileURLToPath(
+        new URL('src/stubs/mediapipeTasksText.ts', import.meta.url),
+      ),
+    },
+  },
   define: {
     __THEME_CACHE_KEY__: JSON.stringify(themeHash(command)),
   },

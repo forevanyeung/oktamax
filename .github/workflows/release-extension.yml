@@ -1,0 +1,127 @@
+name: Release extension
+
+# Builds the extension and uploads it to the Chrome Web Store. Pushing a tag `v<version>` (matching
+# extension/package.json) submits it for review; running it by hand can stage it instead, or only
+# upload the draft. Auth is keyless: GitHub's OIDC token is exchanged through Workload Identity
+# Federation for a short-lived access token of the service account added to the publisher.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'After uploading'
+        type: choice
+        options:
+          - submit for review, publish on approval
+          - submit for review, stage on approval
+          - upload only
+        default: submit for review, publish on approval
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-extension
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - id: version
+        name: Check the version
+        run: |
+          version=$(node -p "require('./extension/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match extension/package.json ($version)"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run build -w @oktamax/extension
+
+      - name: Zip
+        run: cd extension/dist && zip -qr "$GITHUB_WORKSPACE/oktamax-${{ steps.version.outputs.version }}.zip" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: oktamax-${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Holds the variables below, and any required reviewers before a release goes out.
+    environment:
+      name: chrome-web-store
+      url: https://chromewebstore.google.com/detail/${{ vars.CWS_EXTENSION_ID }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ITEM: https://chromewebstore.googleapis.com/v2/publishers/${{ vars.CWS_PUBLISHER_ID }}/items/${{ vars.CWS_EXTENSION_ID }}
+      UPLOAD: https://chromewebstore.googleapis.com/upload/v2/publishers/${{ vars.CWS_PUBLISHER_ID }}/items/${{ vars.CWS_EXTENSION_ID }}
+      ZIP: oktamax-${{ needs.build.outputs.version }}.zip
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          access_token_lifetime: 600s
+          create_credentials_file: false
+
+      - name: Upload
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          api() { curl -sS --fail-with-body -H "Authorization: Bearer $TOKEN" "$@"; }
+
+          response=$(api -X POST -T "$ZIP" "$UPLOAD:upload")
+          echo "$response"
+          state=$(jq -r .uploadState <<<"$response")
+
+          # Large packages are processed asynchronously.
+          for _ in $(seq 60); do
+            [[ "$state" == IN_PROGRESS || "$state" == UPLOAD_IN_PROGRESS ]] || break
+            sleep 10
+            response=$(api "$ITEM:fetchStatus")
+            state=$(jq -r .lastAsyncUploadState <<<"$response")
+          done
+
+          if [[ "$state" != SUCCEEDED ]]; then
+            echo "::error::Upload ended in state $state"
+            echo "$response"
+            exit 1
+          fi
+
+      - name: Submit for review
+        if: inputs.publish != 'upload only'
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+          PUBLISH_TYPE: ${{ inputs.publish == 'submit for review, stage on approval' && 'STAGED_PUBLISH' || 'DEFAULT_PUBLISH' }}
+        run: |
+          response=$(curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"publishType\": \"$PUBLISH_TYPE\"}" "$ITEM:publish")
+          echo "$response"
+          jq -r '.warningInfo.warnings[]? | "::warning::\(.reason): \(.description)"' <<<"$response"
+          echo "Submitted ${{ needs.build.outputs.version }}: $(jq -r .state <<<"$response")" >> "$GITHUB_STEP_SUMMARY"

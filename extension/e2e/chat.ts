@@ -24,7 +24,7 @@ const { MemoryChatStore } = await import('@oktamax/server/store');
 const { fakeOktaMcpPool, mockOkta, scriptedModel } = await import('@oktamax/server/testing');
 
 const ADMIN = 'https://acme-admin.okta.com';
-const PORT = 8787; // the extension's default chat server URL
+const PORT = 8787;
 const extensionPath = resolve(import.meta.dirname, '../dist');
 
 const pages: Record<string, string> = {
@@ -69,7 +69,11 @@ async function main() {
     }),
   );
 
-  await worker.evaluate(() => chrome.storage.sync.set({ assistant: 'server' }));
+  await worker.evaluate(
+    (port) =>
+      chrome.storage.sync.set({ assistant: 'server', chatServerUrl: `http://localhost:${port}` }),
+    PORT,
+  );
 
   const page = await context.newPage();
   page.on('console', (m) => m.type() === 'error' && console.log('[page error]', m.text()));
