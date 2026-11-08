@@ -566,6 +566,11 @@ where Edit is missing, that inputs/selects/checkboxes can't be changed, that the
 `GET` requests, and that the API console sends requests (with the XSRF token for `POST`) and keeps
 their history. Screenshots are saved to `extension/e2e/*.png`.
 
+`npm run screenshots -w @oktamax/extension` takes the website's and the Chrome Web Store
+listing's screenshots (`site/screenshots/`, 1280×800 plus `@2x` copies for the site) on a mock
+admin console, with the real chat server, the real on-device MCP server, and scripted models. The
+numbered ones are the store's five. The website is the static `site/` folder.
+
 - **`server/src/app.test.ts`** runs the real HTTP stack with a fake Okta, a scripted model and a
   stand-in for `okta-mcp-server` (`server/src/testing/`). It covers:
   - only read-only tools are exposed or callable, even when the token has a write scope;

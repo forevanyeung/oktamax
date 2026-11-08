@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Okta Max: the full picture for read-only Okta admins</title>
+    <meta
+      name="description"
+      content="Okta Max shows read-only Okta admins every setting hidden behind Edit, and adds a private on-device AI assistant, an API console and dark mode to the admin console. Free, open source, and it all runs in your browser."
+    />
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="#"><img src="logo.svg" alt="" width="28" height="28" /> Okta Max</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#get-started">Get started</a>
+        <a href="#managed">For IT</a>
+        <a href="https://github.com/forevanyeung/oktamax">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <img class="hero-logo" src="logo.svg" alt="Okta Max logo" width="88" height="88" />
+        <h1>See every Okta setting.</h1>
+        <p class="lede">
+          Okta Max gives read-only admins the hidden settings Okta hides behind an Edit button, a
+          private AI assistant, an API console and dark mode, all inside the admin console you
+          already use.
+        </p>
+        <div class="cta">
+          <!-- TODO: Chrome Web Store link -->
+          <a class="button primary" href="#" data-chrome-web-store>Add to Chrome, it's free</a>
+          <a class="button" href="https://github.com/forevanyeung/oktamax">View source</a>
+        </div>
+        <ul class="badges">
+          <li>Free and open source</li>
+          <li>Runs entirely in Chrome</li>
+          <li>No sign-up, no API tokens</li>
+        </ul>
+        <figure class="shot hero-shot">
+          <img
+            src="screenshots/compare.png"
+            srcset="screenshots/compare@2x.png 2x"
+            width="1280"
+            height="800"
+            alt="Okta's Authenticators page side by side: as a read-only admin with no Actions menu, and with Okta Max's Actions menu and its View option"
+          />
+        </figure>
+      </section>
+
+      <section id="features" class="features">
+        <article class="feature" id="read-only-admin">
+          <div class="copy">
+            <span class="eyebrow">Built for read-only admins</span>
+            <h2>Read-only shouldn't mean in the dark</h2>
+            <p>
+              Plenty of teams manage Okta as code. Every change goes through Terraform and a
+              reviewed pull request, so nobody gets an edit role in the console, not even the
+              engineers who write the config. But Okta's Read-Only Administrator role hides much of
+              that configuration, because many settings only show up in the Edit dialog.
+            </p>
+            <p>
+              Okta Max puts a 👁 wherever Okta leaves out Edit. It opens the exact form you'd get as
+              a super admin, with every field locked, using the API access you already have. Check
+              what's live without breaking GitOps.
+            </p>
+            <ul>
+              <li>App assignments, with the groups behind them by priority</li>
+              <li>SAML settings</li>
+              <li>Group rules and network zones</li>
+              <li>Authentication, global session and password policy rules</li>
+              <li>Authenticator settings, even where Okta hides the Actions menu</li>
+              <li>The raw API response, for the fields no form shows</li>
+              <li>Auditors, help desk and security reviewers find answers on their own</li>
+              <li>
+                Still read-only: your role doesn't change, and Okta itself rejects any change you
+                try
+              </li>
+            </ul>
+          </div>
+          <figure class="shot">
+            <img
+              src="screenshots/1-read-only-view.png"
+              srcset="screenshots/1-read-only-view@2x.png 2x"
+              width="1280"
+              height="800"
+              loading="lazy"
+              alt="View User Assignment dialog showing the groups a user is assigned through, by priority"
+            />
+          </figure>
+        </article>
+
+        <article class="feature reverse" id="assistant">
+          <div class="copy">
+            <span class="eyebrow">AI assistant <span class="new">New</span></span>
+            <h2>Bring your own AI assistant into Okta</h2>
+            <p>
+              Ask your org a question in plain English and get the answer right next to the page
+              you're on. You control the data from start to finish: run it on-device with Gemini
+              Nano, the AI built into Chrome, or deploy the example server to your own
+              infrastructure.
+            </p>
+            <ul>
+              <li>
+                <strong>On-device:</strong> Gemini Nano and Okta's MCP server run inside Chrome. No
+                server, no keys, and nothing leaves your computer.
+              </li>
+              <li>
+                <strong>Your server:</strong> deploy Claude, or any model, to your own
+                infrastructure for multi-step answers and tables, across every org.
+                <a href="claude.html">Set it up</a>
+              </li>
+              <li>Includes a hosted MCP server for Okta any client can use</li>
+              <li>Sends context of the current page you're on</li>
+            </ul>
+          </div>
+          <figure class="shot">
+            <img
+              src="screenshots/2-on-device-assistant.png"
+              srcset="screenshots/2-on-device-assistant@2x.png 2x"
+              width="1280"
+              height="800"
+              loading="lazy"
+              alt="The Okta assistant panel, labeled On-device, answering which users are locked out"
+            />
+          </figure>
+        </article>
+
+        <article class="feature">
+          <div class="copy">
+            <span class="eyebrow">API console</span>
+            <h2>The Okta API, right where you work</h2>
+            <p>
+              Pull up the API drawer on any admin console page, or press <kbd>Ctrl</kbd> +
+              <kbd>`</kbd>. It's already signed in as you, so there's no token to create and nothing
+              to paste. Go from question to data in seconds.
+            </p>
+            <ul>
+              <li>Endpoint suggestions straight from Okta's API reference</li>
+              <li>
+                IDs filled in from the page: on a user's page, <code>{userId}</code> is that user
+              </li>
+              <li>Pretty, table, raw and header views</li>
+              <li>Paging, one-click CSV export of every page, and request history</li>
+            </ul>
+          </div>
+          <figure class="shot">
+            <img
+              src="screenshots/3-api-console.png"
+              srcset="screenshots/3-api-console@2x.png 2x"
+              width="1280"
+              height="800"
+              loading="lazy"
+              alt="The API console drawer showing GET /api/v1/users as a table"
+            />
+          </figure>
+        </article>
+
+        <article class="feature reverse">
+          <div class="copy">
+            <span class="eyebrow">Dark mode</span>
+            <h2>Easy on the eyes, all day long</h2>
+            <p>
+              A dark mode for the entire admin console. Choose between Light, Dark, or follow the
+              system color scheme.
+            </p>
+          </div>
+          <figure class="shot">
+            <img
+              src="screenshots/4-dark-mode.png"
+              srcset="screenshots/4-dark-mode@2x.png 2x"
+              width="1280"
+              height="800"
+              loading="lazy"
+              alt="A read-only View Rule dialog for a group rule in dark mode"
+            />
+          </figure>
+        </article>
+      </section>
+
+      <section class="privacy" id="privacy">
+        <div class="privacy-inner">
+          <h2>Your data stays yours</h2>
+          <p class="lede">
+            Okta Max lives entirely in your browser and environment. It uses your session to
+            authenticate to Okta. No accounts, no cloud, no catch.
+          </p>
+        </div>
+      </section>
+
+      <section class="steps" id="get-started">
+        <h2>Up and running in a minute</h2>
+        <div class="cta left">
+          <!-- TODO: Chrome Web Store link -->
+          <a class="button primary" href="#" data-chrome-web-store>Add to Chrome, it's free</a>
+        </div>
+      </section>
+
+      <section class="steps" id="managed">
+        <span class="eyebrow">For IT</span>
+        <h2>Admin-managed policies</h2>
+        <p class="lede">
+          Manage configurations for Okta Max through Chrome policies, and enforce settings for your
+          organization.
+        </p>
+        <pre><code>{ "chatServerUrl": "https://oktamax.example.com" }</code></pre>
+        <div class="cta left">
+          <a class="button primary" href="policy.html">See managed policies</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Okta Max is open source and not affiliated with or endorsed by Okta, Inc.
+        <a href="https://github.com/forevanyeung/oktamax">github.com/forevanyeung/oktamax</a>
+      </p>
+    </footer>
+  </body>
+</html>

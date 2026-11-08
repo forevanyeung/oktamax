@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin-managed policies: Okta Max</title>
+    <meta
+      name="description"
+      content="Configure Okta Max for every admin with Chrome policy from Google Admin, Intune, Jamf or Group Policy."
+    />
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="index.html"
+        ><img src="logo.svg" alt="" width="28" height="28" /> Okta Max</a
+      >
+      <nav>
+        <a href="index.html#features">Features</a>
+        <a href="index.html#privacy">Privacy</a>
+        <a href="index.html#get-started">Get started</a>
+        <a href="index.html#managed">For IT</a>
+        <a href="https://github.com/forevanyeung/oktamax">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="steps page-intro" id="managed-settings">
+        <a class="back" href="index.html#managed">← Back to Okta Max</a>
+        <span class="eyebrow">For IT</span>
+        <h1>Admin-managed policies</h1>
+        <p class="lede">
+          Set up Okta Max for every admin at once. Settings pushed by Chrome policy apply as soon as
+          the extension loads, and admins can't change them.
+        </p>
+
+        <h3 class="steps-title">Available settings</h3>
+        <table class="settings">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Type</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>chatServerUrl</code></td>
+              <td>string</td>
+              <td>
+                Base URL of your <a href="claude.html">chat server</a>, for example
+                <code>https://oktamax.example.com</code>. The assistant uses it, and the popup shows
+                it read-only. An empty string turns the assistant off.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 class="steps-title">Set it</h3>
+        <ol class="step-list">
+          <li>
+            <h3>Google Admin console</h3>
+            <p>
+              Go to
+              <strong>Devices › Chrome › Apps &amp; extensions › Users &amp; browsers</strong>,
+              select Okta Max, and under <strong>Policy for extensions</strong> paste:
+            </p>
+            <pre><code>{ "chatServerUrl": "https://oktamax.example.com" }</code></pre>
+          </li>
+          <li>
+            <h3>Intune, Jamf or Group Policy</h3>
+            <p>
+              Set the same <code>chatServerUrl</code> key under Okta Max's extension policy. The
+              schema is
+              <a
+                href="https://github.com/forevanyeung/oktamax/blob/main/extension/public/managed_schema.json"
+                ><code>managed_schema.json</code></a
+              >.
+            </p>
+          </li>
+          <li>
+            <h3>Check it</h3>
+            <p>
+              Open <code>chrome://policy</code> and click <strong>Reload policies</strong>. Okta
+              Max's popup shows the server URL and doesn't let admins edit it.
+            </p>
+          </li>
+        </ol>
+
+        <aside class="note">
+          <strong>No extra permission prompt.</strong> Chrome doesn't ask admins to allow the server
+          set by policy. The example server's CORS policy already allows the extension.
+        </aside>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Okta Max is open source and not affiliated with or endorsed by Okta, Inc.
+        <a href="https://github.com/forevanyeung/oktamax">github.com/forevanyeung/oktamax</a>
+      </p>
+    </footer>
+  </body>
+</html>
