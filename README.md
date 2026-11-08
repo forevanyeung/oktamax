@@ -660,6 +660,58 @@ checks four things: each admin's calls carry only their own token, only read too
 write tool call is refused, and only GETs reach Okta. It isn't part of `npm test`, because the
 first run downloads Python and the package.
 
+### Releasing to the Chrome Web Store
+
+Bump `version` in `extension/package.json`, merge, then push a matching tag:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+`.github/workflows/release-extension.yml` builds the extension, uploads the zip to the store and
+submits it for review; it's published when approved. Running the workflow by hand instead can
+stage it on approval (publish later from the dashboard) or only upload the draft.
+
+The workflow has no stored credentials. GitHub's OIDC token is exchanged through Workload Identity
+Federation for a 10-minute access token of a service account, which the store accepts because the
+account is added to the publisher. One-time setup, in a Google Cloud project:
+
+```sh
+PROJECT=my-project
+REPO=forevanyeung/oktamax
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
+
+gcloud services enable chromewebstore.googleapis.com iamcredentials.googleapis.com sts.googleapis.com --project $PROJECT
+gcloud iam service-accounts create chrome-web-store --project $PROJECT
+
+gcloud iam workload-identity-pools create github --location global --project $PROJECT
+gcloud iam workload-identity-pools providers create-oidc oktamax --location global --project $PROJECT \
+  --workload-identity-pool github \
+  --issuer-uri https://token.actions.githubusercontent.com \
+  --attribute-mapping 'google.subject=assertion.sub,attribute.repository=assertion.repository' \
+  --attribute-condition "assertion.repository == '$REPO'"
+
+# Only the publish job, which runs in the chrome-web-store environment, may act as the account.
+gcloud iam service-accounts add-iam-policy-binding chrome-web-store@$PROJECT.iam.gserviceaccount.com \
+  --project $PROJECT --role roles/iam.workloadIdentityUser \
+  --member "principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/subject/repo:$REPO:environment:chrome-web-store"
+```
+
+Then:
+
+1. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole/), under
+   **Account**, add `chrome-web-store@<project>.iam.gserviceaccount.com` as the service account
+   (a publisher can have only one). Note the publisher ID from **Publisher > Settings**.
+2. In the repository settings, create the `chrome-web-store` environment, optionally with
+   required reviewers and a `v*` tag rule, and give it these variables:
+   - `GCP_WORKLOAD_IDENTITY_PROVIDER`:
+     `projects/<project number>/locations/global/workloadIdentityPools/github/providers/oktamax`
+   - `GCP_SERVICE_ACCOUNT`: `chrome-web-store@<project>.iam.gserviceaccount.com`
+   - `CWS_PUBLISHER_ID`, and `CWS_EXTENSION_ID` (the item's ID in the store)
+
+The item must already exist in the store, with its listing and privacy tabs filled in: the API
+updates an item, it doesn't create one.
+
 ### Testing against a real org
 
 `extension/e2e/okta.ts`, `seed.ts` and `live.ts` drive a real Okta org (an integrator org works).
