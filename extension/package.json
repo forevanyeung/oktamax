@@ -13,6 +13,7 @@
     "check": "vp check",
     "test": "vp test",
     "evals": "vpx evals/run.ts",
+    "screenshots": "npm run build && vpx e2e/screenshots.ts",
     "test:e2e": "npm run build && vpx e2e/smoke.ts && vpx e2e/chat.ts && vpx e2e/onDevice.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p e2e && tsc --noEmit -p evals"
   },

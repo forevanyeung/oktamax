@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Set up the Claude assistant server: Okta Max</title>
+    <meta
+      name="description"
+      content="Deploy Okta Max's example assistant server to your own infrastructure and give your whole Okta admin team Claude, with each admin's own Okta role enforced."
+    />
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="index.html"
+        ><img src="logo.svg" alt="" width="28" height="28" /> Okta Max</a
+      >
+      <nav>
+        <a href="index.html#features">Features</a>
+        <a href="index.html#privacy">Privacy</a>
+        <a href="index.html#get-started">Get started</a>
+        <a href="index.html#managed">For IT</a>
+        <a href="https://github.com/forevanyeung/oktamax">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="steps page-intro" id="setup">
+        <a class="back" href="index.html#assistant">← Back to Okta Max</a>
+        <span class="eyebrow">AI assistant</span>
+        <h1>Set up the Claude assistant server</h1>
+        <p class="lede">
+          Deploy the example server to your own infrastructure and give every admin Claude for the
+          tougher, multi-step questions. You host it, you choose the model, and each admin signs in
+          with their own Okta identity, so Okta enforces their role on every lookup.
+        </p>
+        <ol class="step-list">
+          <li>
+            <h3>What you'll need</h3>
+            <ul>
+              <li>Node.js and <a href="https://docs.astral.sh/uv/">uv</a> (or just Docker)</li>
+              <li>
+                A model: an Anthropic API key, or Claude on Amazon Bedrock in your AWS account
+              </li>
+              <li>A super admin, once, to create the Okta OIDC app</li>
+              <li>The extension's ID, shown on <code>chrome://extensions</code></li>
+            </ul>
+          </li>
+          <li>
+            <h3>Clone the repo</h3>
+            <pre><code>git clone https://github.com/forevanyeung/oktamax.git && cd oktamax
+npm install
+cp server/.env.example server/.env   # set OKTA_ORG_URL</code></pre>
+          </li>
+          <li>
+            <h3>Create the Okta OIDC app</h3>
+            <p>
+              One command creates a PKCE app with read-only Okta API scopes, sets the redirect URIs,
+              optionally assigns it to a group, and prints the client ID. Add
+              <code>--server</code> so admins can also use the org's MCP server from their own AI
+              tools.
+            </p>
+            <pre><code>OKTA_API_TOKEN=... npm run create-okta-app -w @oktamax/server -- \
+  &lt;extension-id&gt; --group "Okta Admins" --server https://oktamax.example.com</code></pre>
+            <p>
+              Put the printed <code>OKTA_CLIENT_ID</code> in <code>server/.env</code>, or list
+              several orgs in <code>OKTA_ORGS</code>. Then give the app an authentication policy
+              your admins' console sign-in already satisfies, so sign-in stays silent. The
+              <a href="https://github.com/forevanyeung/oktamax#1-okta-oidc-app">README</a> has the
+              manual steps.
+            </p>
+          </li>
+          <li>
+            <h3>Choose a model</h3>
+            <p>
+              Set <code>ANTHROPIC_API_KEY</code> in <code>server/.env</code> to use Anthropic's API.
+              Without it, the server uses Bedrock with the standard AWS credential chain and
+              <code>AWS_REGION</code>. <code>MODEL_ID</code> picks the model.
+            </p>
+          </li>
+          <li>
+            <h3>Start it</h3>
+            <pre><code>npm run dev:server        # http://localhost:8787</code></pre>
+            <p>Or with Docker, which preinstalls Python and Okta's MCP server:</p>
+            <pre><code>docker build -f server/Dockerfile -t oktamax-server .
+docker run -p 8787:8787 --env-file server/.env oktamax-server</code></pre>
+          </li>
+          <li>
+            <h3>Connect your admins</h3>
+            <p>
+              Each admin picks <strong>Chat server</strong> in the popup and enters its URL. Or set
+              it for everyone in the Google Admin console under
+              <strong>Devices › Chrome › Apps &amp; extensions</strong>, in Okta Max's
+              <strong>Policy for extensions</strong>:
+            </p>
+            <pre><code>{ "chatServerUrl": "https://oktamax.example.com" }</code></pre>
+            <p>
+              Intune, Jamf and Group Policy can set the same key. See
+              <a href="policy.html">admin-managed policies</a> for details.
+            </p>
+          </li>
+          <li>
+            <h3>Optional: add Okta to your AI tools</h3>
+            <p>
+              Admins can add their org's read-only MCP server to any MCP client that supports OAuth.
+              They sign in with Okta on first use.
+            </p>
+            <pre><code>claude mcp add --transport http okta-acme \
+  https://oktamax.example.com/mcp/acme.okta.com</code></pre>
+          </li>
+        </ol>
+
+        <aside class="note">
+          <strong>What the model sees.</strong> With a chat server, your questions, the page you
+          asked from and lookup results go to the model you configured: Bedrock in your AWS account,
+          or Anthropic's API. They can include names and emails from your org. The extension's token
+          is only ever sent to the chat server you set. With the on-device assistant, nothing leaves
+          your computer.
+        </aside>
+      </section>
+
+      <section class="steps" id="byo-server">
+        <h2>Bring your own model or server</h2>
+        <div class="stack">
+          <div>
+            <h3>A different model</h3>
+            <p>
+              The example server is built on the
+              <a href="https://ai-sdk.dev">Vercel AI SDK</a>, so the model is created in one place,
+              <code>server/src/index.ts</code>. Swap in any AI SDK provider, including
+              OpenAI-compatible endpoints like a local Ollama or vLLM, and keep everything else. The
+              model needs to support tool calls.
+            </p>
+          </div>
+          <div>
+            <h3>Your own chat server</h3>
+            <p>
+              The extension speaks a small HTTP API, not the OpenAI chat API, so it can't point at a
+              bare LLM endpoint. To replace the server, implement these routes and stream replies in
+              the AI SDK's UI message stream format (server-sent events):
+            </p>
+            <pre><code>GET  /api/config                orgs and their OIDC client IDs
+GET  /api/chats/:id             chat history (404 if new)
+POST /api/chats/:id/messages    send a message, stream the reply
+GET  /api/chats/:id/stream      resume an in-flight reply (204 if none)
+POST /api/chats/:id/stop        stop the reply</code></pre>
+            <p>
+              Requests carry the admin's Okta access token as a Bearer token, and the org in an
+              <code>X-Okta-Org</code> header. Each org's <code>/mcp/&lt;org host&gt;</code> endpoint
+              is a standard MCP server.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Okta Max is open source and not affiliated with or endorsed by Okta, Inc.
+        <a href="https://github.com/forevanyeung/oktamax">github.com/forevanyeung/oktamax</a>
+      </p>
+    </footer>
+  </body>
+</html>
