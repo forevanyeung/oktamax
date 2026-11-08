@@ -9,3 +9,4 @@ extension/evals/results
 *.zip
 __pycache__
 extension/public/pyodide
+extension/store/upload

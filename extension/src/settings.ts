@@ -14,7 +14,8 @@ export interface Settings {
   /** Show the API console drawer at the bottom of the admin console. */
   showApiConsole: boolean;
   /**
-   * Base URL of the chat server, e.g. https://oktamax.example.com. Empty disables the chat.
+   * Base URL of the chat server, e.g. https://oktamax.example.com. Empty, the default until the
+   * admin sets one, disables the chat.
    * Can be enforced by policy (see `loadManagedSettings`).
    */
   chatServerUrl: string;
@@ -25,7 +26,8 @@ const defaults: Settings = {
   alwaysShowViewButton: false,
   theme: 'system',
   showApiConsole: true,
-  chatServerUrl: 'http://localhost:8787',
+  // Dev builds go to the local server (`npm run dev:server`), or the mock when it isn't running.
+  chatServerUrl: import.meta.env.DEV ? 'http://localhost:8787' : '',
   assistant: 'off',
 };
 

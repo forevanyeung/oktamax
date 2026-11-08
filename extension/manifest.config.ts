@@ -18,7 +18,11 @@ const adminConsole = {
   include_globs: oktaDomains.map((domain) => `https://*-admin.${domain}/*`),
 };
 
-export default defineManifest({
+/** A chat server on the admin's own machine, on any port. */
+const localServer = ['http://localhost/*', 'http://127.0.0.1/*'];
+
+// `vp dev` is the only time the chat server is known to be local; builds ask for it like any other.
+export default defineManifest(({ command }) => ({
   manifest_version: 3,
   name: 'Okta Max',
   description: pkg.description,
@@ -34,10 +38,11 @@ export default defineManifest({
     'https://*.okta-emea.com/*',
     'https://*.okta-gov.com/*',
     // Local chat server during development.
-    'http://localhost/*',
+    ...(command === 'serve' ? localServer : []),
   ],
-  // The chat server's origin, requested from the popup when it's configured.
-  optional_host_permissions: ['https://*/*'],
+  // The chat server's origin, requested from the popup when it's configured: https, or a
+  // server on the admin's own machine (to try one before hosting it), which https://*/* doesn't cover.
+  optional_host_permissions: ['https://*/*', ...(command === 'serve' ? [] : localServer)],
   content_security_policy: {
     // The on-device assistant's offscreen document compiles Pyodide (WebAssembly).
     // Still no eval or remote code: every .wasm file is part of the extension.
@@ -72,4 +77,4 @@ export default defineManifest({
       run_at: 'document_idle',
     },
   ],
-});
+}));

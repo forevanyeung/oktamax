@@ -73,8 +73,9 @@ The toolbar popup has these settings:
 - **Show the API console**: the drawer described below (on by default).
 - **Assistant**: **Off** (the default), **Chat server**, or **On-device** (in Chrome, with Gemini
   Nano).
-- **Chat server URL**: where the assistant's server runs (default `http://localhost:8787`). Chrome
-  asks for permission to reach it. Leave it empty to turn the assistant off.
+- **Chat server URL**: where the assistant's server runs. It's empty until you set it (dev builds
+  default to `http://localhost:8787`), and the assistant stays off while it is. Chrome asks for
+  permission to reach it.
 
 ### Setting the assistant for your organization
 
@@ -435,8 +436,8 @@ docker run -p 8787:8787 --env-file server/.env oktamax-server
 
 Build and load the extension as in [Install](#install), then:
 
-1. In the toolbar popup, set **Chat server URL**. It defaults to `http://localhost:8787`, and
-   Chrome asks for permission to reach it.
+1. In the toolbar popup, set **Chat server URL**, for example `http://localhost:8787`. Chrome asks
+   for permission to reach it.
 2. The **Ask** button appears only on the admin consoles of the orgs the server is configured for.
    While the server can't be reached, it appears on every admin console, and the panel says the
    assistant isn't set up yet.

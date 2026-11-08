@@ -2,7 +2,7 @@
   "name": "@oktamax/extension",
   "version": "0.1.0",
   "private": true,
-  "description": "Chrome extension: read-only 'View' dialogs, an API console, dark mode and an on-page assistant (hosted or on-device) for the Okta admin console.",
+  "description": "Read-only 'View' dialogs, an API console, dark mode and an on-page assistant (hosted or on-device) for the Okta admin console.",
   "type": "module",
   "scripts": {
     "dev": "node scripts/pyodide.mjs --if-missing && vp dev",
@@ -14,6 +14,7 @@
     "test": "vp test",
     "evals": "vpx evals/run.ts",
     "screenshots": "npm run build && vpx e2e/screenshots.ts",
+    "store-assets": "vpx e2e/storeAssets.ts",
     "test:e2e": "npm run build && vpx e2e/smoke.ts && vpx e2e/chat.ts && vpx e2e/onDevice.ts",
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p e2e && tsc --noEmit -p evals"
   },

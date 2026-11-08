@@ -1,0 +1,137 @@
+<!doctype html>
+<!--
+  The Chrome Web Store's artwork, drawn from the website's logo, colors and screenshots.
+  Rendered by e2e/storeAssets.ts: ?variant=icon (128×128), tile (440×280) or marquee (1400×560).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family:
+          'Inter',
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .artwork {
+        display: none;
+        position: relative;
+        overflow: hidden;
+        color: #fff;
+        background: linear-gradient(135deg, #0d3fa8, #2b7bff);
+      }
+      body.tile .tile,
+      body.marquee .marquee {
+        display: flex;
+      }
+      h1 {
+        margin: 0;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1;
+      }
+      p {
+        margin: 0;
+        color: #ffc83d;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      /* The store's icon guideline: 96×96 artwork centered in 128×128, transparent around it. */
+      body.icon {
+        background: transparent;
+      }
+      .icon-art {
+        display: none;
+        width: 96px;
+        height: 96px;
+        margin: 16px;
+      }
+      body.icon .icon-art {
+        display: block;
+      }
+
+      /* Small tile: legible at half size, so only the logo, the name and a few words. */
+      .tile {
+        width: 440px;
+        height: 280px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+      }
+      .tile img {
+        width: 104px;
+        height: 104px;
+        filter: drop-shadow(0 8px 20px rgb(0 0 0 / 25%));
+      }
+      .tile h1 {
+        font-size: 44px;
+      }
+      .tile p {
+        font-size: 21px;
+      }
+
+      .marquee {
+        width: 1400px;
+        height: 560px;
+        align-items: center;
+      }
+      .marquee .copy {
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+        padding-left: 96px;
+        width: 560px;
+        flex: none;
+      }
+      .marquee .copy img {
+        width: 112px;
+        height: 112px;
+        filter: drop-shadow(0 8px 20px rgb(0 0 0 / 25%));
+      }
+      .marquee h1 {
+        font-size: 76px;
+      }
+      .marquee p {
+        font-size: 34px;
+      }
+      .marquee .shot {
+        position: absolute;
+        left: 700px;
+        top: 70px;
+        width: 840px;
+        border-radius: 14px;
+        box-shadow: 0 30px 80px rgb(0 0 0 / 40%);
+      }
+    </style>
+  </head>
+  <body>
+    <img class="icon-art" src="../../site/logo.svg" alt="" />
+
+    <div class="artwork tile">
+      <img src="../../site/logo.svg" alt="" />
+      <h1>Okta Max</h1>
+      <p>See every Okta setting.</p>
+    </div>
+
+    <div class="artwork marquee">
+      <div class="copy">
+        <img src="../../site/logo.svg" alt="" />
+        <h1>Okta Max</h1>
+        <p>See every Okta setting.</p>
+      </div>
+      <img class="shot" src="../../site/screenshots/1-read-only-view@2x.png" alt="" />
+    </div>
+
+    <script>
+      document.body.className = new URLSearchParams(location.search).get('variant') ?? 'tile';
+    </script>
+  </body>
+</html>
