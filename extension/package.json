@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^3.0.0",
-    "@hono/node-server": "^2.1.5",
+    "@hono/node-server": "^2.1.8",
     "@oktamax/server": "*",
     "@types/chrome": "^0.3.7",
     "@types/node": "^26.6.6",
