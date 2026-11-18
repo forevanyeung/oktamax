@@ -1,6 +1,7 @@
 /**
  * What the API console keeps across page loads: the request being written,
- * the drawer's height and whether it's open, and the history of sent requests.
+ * the drawer's height and whether it's open, where its tab sits, and the
+ * history of sent requests.
  */
 import type { ApiRequest, Method } from './request';
 
@@ -20,6 +21,8 @@ export interface ConsoleState {
   height: number;
   /** As tall as it can be, rather than at `height`. */
   maximized: boolean;
+  /** Where the closed drawer's tab sits along the bottom: 0 is the left edge, 1 the right. */
+  tabX: number;
   draft: ApiRequest;
   history: HistoryEntry[];
 }
@@ -31,6 +34,7 @@ export const defaultState: ConsoleState = {
   open: false,
   height: 420,
   maximized: false,
+  tabX: 0.5,
   draft: { method: 'GET', url: '/api/v1/users/me', body: '' },
   history: [],
 };
