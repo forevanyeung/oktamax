@@ -100,6 +100,14 @@ describe('open_in_api_console', () => {
     expect(out.response).toContain('E0000006');
   });
 
+  it('says which scope the token lacks', async () => {
+    const challenge =
+      'Bearer realm="IdpRealm", scope="okta.roles.read", error="insufficient_scope", error_description="The access token provided does not contain the required scopes."';
+    reply = () => new Response(null, { status: 403, headers: { 'www-authenticate': challenge } });
+    const out = await run('/api/v1/iam/roles');
+    expect(out).toMatchObject({ ok: true, status: 403, response: '', wwwAuthenticate: challenge });
+  });
+
   it('truncates long responses', async () => {
     reply = () => new Response('x'.repeat(MAX_RESPONSE_CHARS + 10));
     const out = await run('/api/v1/logs');

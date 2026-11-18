@@ -11,6 +11,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { tool } from 'ai';
 import * as z from 'zod';
 
+import { OKTA_SCOPES } from '@oktamax/shared';
 import {
   checkAdminPath,
   checkApiPath,
@@ -27,6 +28,7 @@ const input = z.object({ path: z.string().max(2_000) });
 /** Most of a response the model gets: about 10k tokens. The console has all of it. */
 export const MAX_RESPONSE_CHARS = 40_000;
 const TIMEOUT_MS = 30_000;
+const TOKEN_SCOPES = OKTA_SCOPES.filter((s) => s.startsWith('okta.')).join(', ');
 
 /** Okta's `Link: <…>; rel="next"` header, as a path for the next call. */
 function nextPath(link: string | null, org: URL): string | undefined {
@@ -61,11 +63,17 @@ async function fetchAsAdmin(principal: Principal, path: string): Promise<CallToo
   }
   const text = await res.text();
   const next = nextPath(res.headers.get('link'), org);
+  // A 401/403 for a missing scope has an empty body; the scope it needs is in this header.
+  const challenge = res.ok ? null : res.headers.get('www-authenticate');
   return {
     isError: !res.ok,
     content: [{ type: 'text', text }],
     // Kept out of `content` so the hooks only see Okta's body.
-    _meta: { status: res.status, ...(next && { next }) },
+    _meta: {
+      status: res.status,
+      ...(next && { next }),
+      ...(challenge && { wwwAuthenticate: challenge }),
+    },
   };
 }
 
@@ -76,6 +84,8 @@ export type ApiConsoleOutput = PageToolOutput & {
   truncated?: true;
   /** The next page's path, to call this tool with if more is needed. */
   next?: string;
+  /** Why Okta refused the token, e.g. `error="insufficient_scope"` and the `scope` it needs. */
+  wwwAuthenticate?: string;
 };
 
 /** The page tools for `principal`'s chat. `hooks` are the MCP gateway's. */
@@ -83,7 +93,9 @@ export const pageTools = (principal: Principal, hooks: ToolHooks = new ToolHooks
   [OPEN_IN_API_CONSOLE]: tool({
     description: `Open a GET request in the API console, a drawer at the bottom of the admin's page, and send it there, so the admin gets the full response with paging, a table view and CSV export. The same request is sent for you too: its response (the first ${MAX_RESPONSE_CHARS.toLocaleString('en-US')} characters) comes back in this tool's result, so answer from it.
 
-Prefer ${NAVIGATE}. Use this only when the admin asks for the API or the API console, or when no admin console page shows what they asked for. Pass the same path you'd query, with filters, e.g. /api/v1/logs?filter=eventType eq "user.authentication.sso" and target.id eq "0oa…"&since=2026-11-01T00:00:00Z. It's sent with the admin's permissions. Still say in your answer what you opened.`,
+Prefer ${NAVIGATE}. Use this only when the admin asks for the API or the API console, or when no admin console page shows what they asked for. Pass the same path you'd query, with filters, e.g. /api/v1/logs?filter=eventType eq "user.authentication.sso" and target.id eq "0oa…"&since=2026-11-01T00:00:00Z. Still say in your answer what you opened.
+
+The console sends it with the admin's browser session; your copy is sent with their Okta token, which only has these read scopes: ${TOKEN_SCOPES}. So a 403 here can be a 200 in the console: when wwwAuthenticate says insufficient_scope, tell the admin the assistant's token lacks that scope (the console shows them the response), rather than saying they lack access.`,
     inputSchema: input,
     execute: async ({ path }): Promise<ApiConsoleOutput> => {
       const checked = checkApiPath(path);
@@ -95,11 +107,16 @@ Prefer ${NAVIGATE}. Use this only when the admin asks for the API or the API con
           fetchAsAdmin(principal, checked.path),
         );
       const text = result.content.map((item) => (item.type === 'text' ? item.text : '')).join('\n');
-      const meta = (result._meta ?? {}) as { status?: number; next?: string };
+      const meta = (result._meta ?? {}) as {
+        status?: number;
+        next?: string;
+        wwwAuthenticate?: string;
+      };
       const output: ApiConsoleOutput = { ...checked, response: text.slice(0, MAX_RESPONSE_CHARS) };
       if (meta.status !== undefined) output.status = meta.status;
       if (text.length > MAX_RESPONSE_CHARS) output.truncated = true;
       if (meta.next) output.next = meta.next;
+      if (meta.wwwAuthenticate) output.wwwAuthenticate = meta.wwwAuthenticate;
       return output;
     },
   }),
