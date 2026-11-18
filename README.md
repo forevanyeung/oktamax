@@ -398,7 +398,9 @@ that org's `OKTA_ORG_URL`. Or by hand:
    The extension ID is shown on `chrome://extensions`. To keep it stable across machines, add a
    `key` to `extension/manifest.config.ts`.
 
-3. **Okta API Scopes** tab: grant the `okta.*.read` scopes listed in `OKTA_SCOPES`.
+3. **Okta API Scopes** tab: grant the `okta.*.read` scopes listed in `OKTA_SCOPES`. When a new
+   version adds one, grant it before updating, or sign-in asks for a scope the app doesn't have.
+   Running `create-okta-app` again grants the missing ones.
 4. Assign the app to your admins. Okta answers an unassigned admin with an error page, which
    Chrome reports as "Authorization page could not be loaded".
 5. Give the app an authentication policy your admins' admin console sign-in satisfies. Otherwise
