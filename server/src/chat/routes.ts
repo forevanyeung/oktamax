@@ -26,6 +26,7 @@ import * as z from 'zod';
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
 import { orgFromHeader, principalKey, requireAuth } from '../auth';
+import type { ToolHooks } from '../mcp/hooks';
 import type { OktaMcpProcessPool } from '../mcp/processPool';
 import { pageTools } from './pageTools';
 import { instructions, withPageContext } from './prompt';
@@ -38,6 +39,8 @@ export interface ChatDeps {
   mcpUrl: string;
   /** The admins' Okta MCP processes behind `mcpUrl`, started early when a chat opens. */
   oktaMcp: Pick<OktaMcpProcessPool, 'prepare'>;
+  /** Rules for every MCP tool call (`mcp/hooks/`), also applied to API console responses. */
+  hooks?: ToolHooks;
 }
 
 const pageContextSchema = z.object({
@@ -50,7 +53,7 @@ const pageContextSchema = z.object({
 });
 const metadataSchema = z.object({ page: pageContextSchema.optional() }).optional();
 
-export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
+export function createChatRoutes({ model, store, mcpUrl, oktaMcp, hooks }: ChatDeps) {
   // The extension says which org's admin console the chat is on (X-Okta-Org).
   const chatRoutes = new Hono().use(requireAuth(orgFromHeader));
 
@@ -105,7 +108,7 @@ export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
       messages: await convertToModelMessages(withPageContext(chat.messages), {
         ignoreIncompleteToolCalls: true,
       }),
-      tools: { ...(await mcp.tools()), ...pageTools },
+      tools: { ...(await mcp.tools()), ...pageTools(principal, hooks) },
       stopWhen: isStepCount(20),
       abortSignal: abort.signal,
     });
