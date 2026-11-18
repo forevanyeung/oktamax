@@ -1,0 +1,1 @@
+{"POST /api/v1/groups/{groupId}/owners":{"f":[{"p":"id","t":"string","d":"The `id` of the group owner"},{"p":"type","t":"string","d":"The entity type of the owner","e":["GROUP","USER"]}],"x":[{"n":"AssignAGroupOwner","v":{"id":"00u1cmc03xjzePoWD0h8","type":"USER"}}]}}

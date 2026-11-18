@@ -1,0 +1,1 @@
+{"POST /api/v1/authorizationServers/{authServerId}/associatedServers":{"f":[{"p":"trusted","t":"string[]","d":"A list of the authorization server IDs"}],"x":[{"n":"CreateAssocAuthServer","v":[{"trusted":"{authorizationServerId}"}]}]}}

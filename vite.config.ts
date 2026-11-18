@@ -7,7 +7,11 @@ export default defineConfig({
   },
   fmt: {
     // Written by `npm run endpoints -w @oktamax/extension`.
-    ignorePatterns: ['extension/src/console/endpoints.json'],
+    ignorePatterns: [
+      'extension/src/console/endpoints.json',
+      // Written by `npm run bodies -w @oktamax/extension`.
+      'extension/src/console/bodies/*.json',
+    ],
     semi: true,
     singleQuote: true,
     printWidth: 100,

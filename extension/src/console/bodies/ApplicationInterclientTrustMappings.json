@@ -1,0 +1,1 @@
+{"POST /api/v1/apps/{appId}/interclient-allowed-apps":{"f":[{"p":"id","t":"string","d":"App ID of the allowed app"}],"x":[{"n":"createInterclientTrustMappingRequest","v":{"id":"0oa89ks1irGAcYwXw0g5"}}]}}

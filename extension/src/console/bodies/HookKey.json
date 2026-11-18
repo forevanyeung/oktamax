@@ -1,0 +1,1 @@
+{"POST /api/v1/hook-keys":{"f":[{"p":"name","t":"string","d":"Display name for the key"}]},"PUT /api/v1/hook-keys/{id}":{"f":[{"p":"name","t":"string","d":"Display name for the key"}]}}

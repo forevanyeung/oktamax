@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { loadSettings, onSettingsChanged } from '../settings';
 import { fillTemplate, LABELS, pageContext, placeholders, type PageContext } from './context';
 import { timeAgo } from './format';
+import { BodyHints } from './BodyHints';
 import { setDrawerInset } from './inset';
 import { setConsoleHandler } from './remote';
 import { Prompt, type PromptHandle } from './Prompt';
@@ -402,7 +403,7 @@ const BodyEditor = ({
     }
   };
 
-  return (
+  const editor = (
     <div className="body-editor">
       {request.method === 'GET' && (
         <p className="hint">
@@ -431,6 +432,13 @@ const BodyEditor = ({
           Format
         </button>
       </div>
+    </div>
+  );
+  if (request.method === 'GET') return editor;
+  return (
+    <div className="body-layout">
+      {editor}
+      <BodyHints request={request} onInsert={onChange} />
     </div>
   );
 };
@@ -463,7 +471,12 @@ const HistoryList = ({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <button type="button" className="clear-history" disabled={!history.length} onClick={onClear}>
+        <button
+          type="button"
+          className="clear-history"
+          disabled={!history.length}
+          onClick={onClear}
+        >
           Clear
         </button>
       </div>

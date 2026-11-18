@@ -115,7 +115,9 @@ const toSuggestion = (endpoint: Endpoint, url: string): Suggestion => ({
  * `/users/me` is `/users/me` rather than `/users/{userId}`.
  */
 export function endpointFor(url: string, method: Method, endpoints = ENDPOINTS) {
-  const typed = segmentsOf(absolute(splitUrl(url.trim()).path));
+  let path = splitUrl(url.trim()).path;
+  if (/^https?:/.test(path)) path = new URL(path).pathname;
+  const typed = segmentsOf(absolute(path));
   const literals = (template: string[]) => template.filter((s) => !isParam(s)).length;
   return endpoints
     .filter((e) => e.m === method)

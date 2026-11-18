@@ -1,0 +1,1 @@
+{"POST /api/v1/idps/{idpId}/users/{userId}":{"f":[{"p":"externalId","t":"string","d":"Unique IdP-specific identifier for a user"}]}}

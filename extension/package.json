@@ -9,6 +9,7 @@
     "build": "node scripts/pyodide.mjs --if-missing && vp build",
     "icons": "node scripts/icons.mjs",
     "endpoints": "node scripts/endpoints.mjs",
+    "bodies": "node scripts/bodies.mjs",
     "pyodide": "node scripts/pyodide.mjs",
     "check": "vp check",
     "test": "vp test",

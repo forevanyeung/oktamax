@@ -1,0 +1,1 @@
+{"PATCH /api/v1/iam/resource-sets/{resourceSetIdOrLabel}/bindings/{roleIdOrLabel}/members":{"f":[{"p":"additions","t":"string[]","d":"A list of member resources to add to the role resource set binding"}],"x":[{"n":"Example Request","v":{"additions":["https://{yourOktaDomain}/api/v1/groups/00guaxWZ0AOa5NFAj0g3","https://{yourOktaDomain}/api/v1/users/00u67DU2qNCjNZYO0g3"]}}]}}

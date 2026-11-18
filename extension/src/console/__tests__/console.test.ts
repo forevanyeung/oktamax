@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 
+import { missingFields, presentFields, skeleton, type BodyField } from '../body';
 import { fillTemplate, pageContext, placeholders } from '../context';
 import { csvFilename, flatten, toCsv } from '../csv';
 import { cell, formatBytes, isTable, oktaError, tableColumns, timeAgo } from '../format';
@@ -235,5 +236,66 @@ describe('suggestions', () => {
     expect(docsUrl(endpoints[0]!)).toBe(
       'https://developer.okta.com/docs/api/openapi/okta-management/management/tags/user/other/listusers',
     );
+  });
+});
+
+describe('body hints', () => {
+  const endpoints: Endpoint[] = [
+    { m: 'GET', p: '/api/v1/users/{userId}', s: 'Retrieve a user', t: 'User' },
+    { m: 'POST', p: '/api/v1/users/{userId}', s: 'Update a user', t: 'User' },
+    { m: 'GET', p: '/api/v1/users/me', s: 'Retrieve the current user', t: 'User' },
+    { m: 'POST', p: '/api/v1/users', s: 'Create a user', t: 'User' },
+  ];
+  const fields: BodyField[] = [
+    { p: 'credentials', t: 'object' },
+    { p: 'credentials.password', t: 'object' },
+    { p: 'credentials.password.value', t: 'string', r: 1 },
+    { p: 'groupIds', t: 'string[]' },
+    { p: 'profile', t: 'object', r: 1 },
+    { p: 'profile.login', t: 'string', r: 1 },
+    { p: 'profile.email', t: 'string', r: 1 },
+    { p: 'profile.city', t: 'string' },
+    { p: 'roles', t: 'object[]' },
+    { p: 'roles[].type', t: 'string', r: 1, e: ['SUPER_ADMIN', 'ORG_ADMIN'] },
+    { p: 'type', t: 'string', r: 1, e: ['OKTA', 'SAML'] },
+  ];
+  const missing = (body: unknown) => missingFields(fields, body).map((f) => f.p);
+
+  it("finds a whole URL's endpoint by method, preferring literal paths", () => {
+    const find = (url: string, method: 'GET' | 'POST') => endpointFor(url, method, endpoints)?.s;
+    expect(find('users', 'POST')).toBe('Create a user');
+    expect(find('/api/v1/users?activate=true', 'POST')).toBe('Create a user');
+    expect(find('https://acme.okta.com/api/v1/users/00u1', 'POST')).toBe('Update a user');
+    expect(find('users/{userId}', 'POST')).toBe('Update a user');
+    expect(find('users/me', 'GET')).toBe('Retrieve the current user');
+    expect(find('use', 'POST')).toBeUndefined();
+    expect(find('users/me', 'POST')).toBe('Update a user');
+  });
+
+  it('lists required fields the body is missing, only under parents it has', () => {
+    expect(missing({})).toEqual(['profile', 'type']);
+    expect(missing({ profile: { login: 'a@x.com' }, type: 'OKTA' })).toEqual(['profile.email']);
+    expect(missing({ profile: { login: 'a', email: 'a' }, type: 'OKTA', credentials: {} })).toEqual(
+      [],
+    );
+    expect(
+      missing({
+        profile: { login: 'a', email: 'a' },
+        type: 'OKTA',
+        credentials: { password: {} },
+        roles: [{ type: 'ORG_ADMIN' }, {}],
+      }),
+    ).toEqual(['credentials.password.value', 'roles[].type']);
+    expect(missing([])).toEqual(['profile', 'type']);
+  });
+
+  it('marks the fields a body sets', () => {
+    expect([
+      ...presentFields(fields, { profile: { login: 'a' }, roles: [{ type: 'X' }], type: null }),
+    ]).toEqual(['profile', 'profile.login', 'roles', 'roles[].type']);
+  });
+
+  it('starts a body from the required fields when there are no examples', () => {
+    expect(skeleton(fields)).toEqual({ profile: { login: '', email: '' }, type: 'OKTA' });
   });
 });

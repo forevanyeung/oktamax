@@ -359,6 +359,18 @@ async function main() {
   });
   await page.screenshot({ path: join(import.meta.dirname, 'api-console-error.png') });
 
+  // Beside the body: its fields from the API reference, what's missing, and examples.
+  const hints = drawer.getByRole('complementary', { name: 'Request body reference' });
+  await hints.getByText('profile.name').waitFor();
+  await prompt.fill('users');
+  await prompt.press('Escape');
+  await drawer.locator('textarea').fill('');
+  await hints.getByText('Missing a required field: profile').waitFor();
+  await hints.getByRole('button', { name: 'Insert example' }).click();
+  assert.match(await drawer.locator('textarea').inputValue(), /"login": /);
+  await hints.getByText('Has every required field.').waitFor();
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-body.png') });
+
   // History keeps every request, newest first, and survives a page load.
   await page.waitForTimeout(500); // the console saves its state after a short debounce
   await page.reload();
