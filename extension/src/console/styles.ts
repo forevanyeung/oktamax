@@ -20,13 +20,15 @@ export const consoleStyles = `
 }
 
 .drawer-tab {
-  position: fixed; z-index: 2147482000; bottom: 0; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 6px; padding: 4px 16px 3px;
+  position: fixed; z-index: 2147482000; bottom: 0;
+  left: calc(var(--x, 0.5) * 100%); transform: translateX(calc(var(--x, 0.5) * -100%));
+  display: flex; align-items: center; gap: 6px; padding: 4px 32px 3px;
   border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0;
   background: var(--surface); box-shadow: var(--shadow) 0 -2px 8px 0;
   font: 600 12px/18px ${BODY_FONT}; color: var(--muted); cursor: pointer;
 }
 .drawer-tab:hover { color: var(--blue); }
+.drawer-tab.dragging { cursor: grabbing; color: var(--blue); }
 .drawer-tab .chevron {
   width: 6px; height: 6px; margin-top: 3px;
   border: solid currentColor; border-width: 2px 0 0 2px; transform: rotate(45deg);

@@ -76,6 +76,8 @@ const maxHeight = () => clampHeight(Infinity);
 // transform is animated, so a large response isn't laid out again every frame.
 const SLIDE = { duration: 320, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' };
 const DOUBLE_PRESS_MS = 300;
+/** How far the tab has to move before a press counts as a drag, not a click. */
+const DRAG_THRESHOLD = 4;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ParamsEditor = ({ url, onChange }: { url: string; onChange: (url: string) => void }) => {
@@ -308,6 +310,7 @@ export const ApiConsole = () => {
   const context = usePageContext(!!state?.open && enabled);
 
   const drawer = useRef<HTMLElement>(null);
+  const tabDragged = useRef(false);
   // Growing: the height it grew from, to slide up from once it has grown.
   const grownFrom = useRef<number>(undefined);
   // Shrinking: the slide down, held at its end until the drawer has shrunk.
@@ -477,13 +480,52 @@ export const ApiConsole = () => {
     grip.addEventListener('pointerup', onUp);
   };
 
+  // The tab slides along the bottom, out of the way of whatever the page has
+  // there. `tabX` keeps it where it was dropped, relative to the window's width.
+  const startTabDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    tabDragged.current = false;
+    const tab = event.currentTarget;
+    const startX = event.clientX;
+    const startLeft = tab.getBoundingClientRect().left;
+    // The width `left: %` is measured against, without the scrollbar.
+    const travel = document.documentElement.clientWidth - tab.offsetWidth;
+    let dragging = false;
+    const onMove = (e: PointerEvent) => {
+      const dx = e.clientX - startX;
+      if (!dragging) {
+        if (Math.abs(dx) < DRAG_THRESHOLD) return;
+        dragging = true;
+        tab.setPointerCapture(e.pointerId);
+        tab.classList.add('dragging');
+      }
+      if (travel > 0) update({ tabX: Math.max(0, Math.min(1, (startLeft + dx) / travel)) });
+    };
+    const onUp = () => {
+      tab.removeEventListener('pointermove', onMove);
+      tab.removeEventListener('pointerup', onUp);
+      tab.removeEventListener('pointercancel', onUp);
+      tab.classList.remove('dragging');
+      tabDragged.current = dragging;
+    };
+    tab.addEventListener('pointermove', onMove);
+    tab.addEventListener('pointerup', onUp);
+    tab.addEventListener('pointercancel', onUp);
+  };
+
   if (!state.open) {
     return (
       <button
         type="button"
         className="drawer-tab"
-        title="Open the API console (Ctrl + `)"
-        onClick={() => update({ open: true })}
+        title="Open the API console (Ctrl + `), or drag to move"
+        style={{ '--x': state.tabX } as React.CSSProperties}
+        onPointerDown={startTabDrag}
+        onClick={() => {
+          // A drag ends in a click too; only a press that stayed put opens it.
+          if (tabDragged.current) tabDragged.current = false;
+          else update({ open: true });
+        }}
       >
         <span className="chevron" aria-hidden />
         API
