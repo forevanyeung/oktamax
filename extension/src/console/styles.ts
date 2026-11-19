@@ -78,11 +78,18 @@ export const consoleStyles = `
   display: flex; flex-direction: column; flex: 0 0 280px; min-width: 0;
   border-right: 1px solid var(--border); background: var(--canvas);
 }
-.history-head { display: flex; gap: 6px; padding: 8px; }
+/* Same top offset and height as the prompt (.work's 10px padding, 34px + borders), so they line up. */
+.history-head { display: flex; gap: 6px; align-items: center; padding: 10px 8px 8px; }
 .filter {
-  flex: 1; min-width: 0; padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px;
+  flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface);
 }
+/* Same height as the filter beside it. */
+.drawer .clear-history {
+  flex: none; height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); font-size: 13px;
+}
+.drawer .clear-history:hover:not(:disabled) { background: var(--hover); }
 .history-list { flex: 1; margin: 0; padding: 0 0 8px; overflow: auto; list-style: none; }
 .history-list li { position: relative; }
 .history-item {
@@ -115,9 +122,16 @@ export const consoleStyles = `
   background: var(--surface);
 }
 .prompt:focus-within { border-color: var(--blue); box-shadow: var(--focus) 0 0 0 3px; }
+/* The native arrow sits low and hugs the edge; draw a centered chevron in the method's color instead. */
 .method-select {
-  flex: none; padding: 0 8px 0 12px; border: 0; border-right: 1px solid var(--border);
-  border-radius: 8px 0 0 8px; background: var(--raised);
+  flex: none; padding: 0 30px 0 12px; border: 0; border-right: 1px solid var(--border);
+  border-radius: 8px 0 0 8px; appearance: none; -webkit-appearance: none;
+  background-color: var(--raised);
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 17px center, right 12px center;
+  background-size: 5px 5px; background-repeat: no-repeat;
   font: 700 13px/34px ${MONO_FONT} !important; cursor: pointer;
 }
 .method-select.m-GET { color: var(--get); }
