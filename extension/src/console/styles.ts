@@ -84,6 +84,12 @@ export const consoleStyles = `
   flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface);
 }
+/* Same height as the filter beside it. */
+.drawer .clear-history {
+  flex: none; height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); font-size: 13px;
+}
+.drawer .clear-history:hover:not(:disabled) { background: var(--hover); }
 .history-list { flex: 1; margin: 0; padding: 0 0 8px; overflow: auto; list-style: none; }
 .history-list li { position: relative; }
 .history-item {

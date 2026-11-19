@@ -236,7 +236,7 @@ const HistoryList = ({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <button type="button" className="small" disabled={!history.length} onClick={onClear}>
+        <button type="button" className="clear-history" disabled={!history.length} onClick={onClear}>
           Clear
         </button>
       </div>
