@@ -170,8 +170,10 @@ Admin console tab                     Service worker              Server        
 - **Auth without a new login.** The extension signs in to an Okta OIDC app with PKCE through
   `chrome.identity`. The admin already has an Okta session, so this is normally silent. The access
   token comes from the org authorization server with **read-only Okta API scopes only**
-  (`shared/src/index.ts`). Every Okta call is made with that token, so Okta enforces both the
-  scopes and the admin's own role. The admin console session cookie is never read or sent anywhere.
+  (`shared/src/index.ts`). Every Okta call the server makes uses that token, so Okta enforces both
+  the scopes and the admin's own role. The one exception is `open_in_api_console` (below): the API
+  console sends that GET from the page with the admin's session, and only its response reaches
+  the server. The admin console session cookie is never read or sent anywhere.
 - **The token stays in the service worker.** The page-side chat code calls the server through
   `bridgeFetch`, which hands the request to the service worker. The worker adds the token, but
   only for the configured chat server.
@@ -192,18 +194,24 @@ Admin console tab                     Service worker              Server        
   - **Stop** calls `POST /api/chats/:id/stop`, because with resumable streams a dropped connection
     doesn't cancel anything.
 - **Acting on the page.** Besides Okta's read tools, the model has two page tools
-  (`shared/src/pageTools.ts`). The server only checks their input; the extension carries them out
-  when they show up in the reply (`extension/src/chat/pageActions.ts`):
+  (`shared/src/pageTools.ts`), which the extension carries out when they show up in the reply
+  (`extension/src/chat/pageActions.ts`):
   - `navigate` loads an admin console page, for "take me to…" or "bring up the logs for…" (the
-    System Log takes a filter and time range in its URL). The answer carries on on the new page.
-    The model prefers this one.
-  - `open_in_api_console` opens a `GET /api/...` request in the API console and sends it, when you
-    ask for the API or no admin console page shows what you asked for. You get the full response
-    with paging, the table view and CSV export.
+    System Log takes a filter and time range in its URL). The server checks the path. The answer
+    carries on on the new page. The model prefers this one.
+  - `open_in_api_console` sends a `GET /api/...` request from the API console, when you ask for the
+    API or the model's other tools can't answer. You get the full response with paging, the table
+    view and CSV export. The model gets the same response back: the reply stops at the call, the
+    extension posts the response as the call's output, and the server runs it through the
+    [hooks](#hooks-what-the-mcp-servers-withhold) and carries on with the reply. It's sent with
+    your session, so the model can read anything you can, including APIs Okta's MCP server has no
+    tools for, but only with GETs: anything that changes the org, you send yourself. If you leave
+    the page before the response comes back, the next page sends the request again. With the
+    console turned off, the request is still sent, just not shown.
 
-  Both only take paths on the current org; the API console only sends GETs this way. Each call
-  runs once, in the tab you're looking at, and calls already in the history don't run again; the
-  chat shows **Open again** / **Go again** for them. The model can't click or type on Okta's pages:
+  Both only take paths on the current org. `navigate` runs once, in the tab you're looking at, and
+  calls already in the history don't run again; the chat shows **Open again** / **Go again** for
+  them. The model can't click or type on Okta's pages:
   it reads page text and log data, which others can influence, so that would let them steer an
   admin's clicks.
 
@@ -398,9 +406,7 @@ that org's `OKTA_ORG_URL`. Or by hand:
    The extension ID is shown on `chrome://extensions`. To keep it stable across machines, add a
    `key` to `extension/manifest.config.ts`.
 
-3. **Okta API Scopes** tab: grant the `okta.*.read` scopes listed in `OKTA_SCOPES`. When a new
-   version adds one, grant it before updating, or sign-in asks for a scope the app doesn't have.
-   Running `create-okta-app` again grants the missing ones.
+3. **Okta API Scopes** tab: grant the `okta.*.read` scopes listed in `OKTA_SCOPES`.
 4. Assign the app to your admins. Okta answers an unassigned admin with an error page, which
    Chrome reports as "Authorization page could not be loaded".
 5. Give the app an authentication policy your admins' admin console sign-in satisfies. Otherwise

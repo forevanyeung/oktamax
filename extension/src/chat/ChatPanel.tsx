@@ -65,7 +65,7 @@ const Conversation = ({
 }) => {
   const chat = useOktaChat(serverUrl, chatId, initialMessages);
   const runtime = useAISDKRuntime(chat);
-  usePageActions(chat.messages, initialMessages);
+  usePageActions(chat.messages, initialMessages, chat.addToolOutput);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

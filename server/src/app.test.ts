@@ -473,6 +473,63 @@ describe('chat', () => {
     expect(res.status).toBe(403);
   });
 
+  it("waits for the API console's response, then answers from it", async () => {
+    const id = 'chat-console';
+    const post = (message: object) =>
+      fetch(`${base}/api/chats/${id}/messages`, {
+        method: 'POST',
+        headers: { ...auth('token-ada'), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+    const history = async () =>
+      (
+        (await (await fetch(`${base}/api/chats/${id}`, { headers: auth('token-ada') })).json()) as {
+          messages: Array<{ id: string; role: string; parts: Array<Record<string, unknown>> }>;
+        }
+      ).messages;
+
+    const asked = await post({
+      id: 'q1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Show me the sign-in logs' }],
+    });
+    await asked.text();
+
+    // The reply stops at the call, for the extension to run.
+    let reply = (await history()).at(-1)!;
+    const call = reply.parts.find((p) => p.type === 'tool-open_in_api_console')!;
+    expect(call.state).toBe('input-available');
+
+    // The extension posts the console's response; the reply carries on.
+    const response = JSON.stringify([{ actor: { mobilePhone: '555-010-0199' } }]);
+    const answered = {
+      ...reply,
+      parts: reply.parts.map((p) =>
+        p === call
+          ? { ...p, state: 'output-available', output: { ok: true, status: 200, response } }
+          : p,
+      ),
+    };
+    const resumed = await post(answered);
+    expect(resumed.status).toBe(200);
+    const sse = await resumed.text();
+    // The same reply, continued.
+    expect(sse).toContain(`"messageId":"${reply.id}"`);
+    expect(sse).toContain('"delta":"console."');
+
+    reply = (await history()).at(-1)!;
+    const done = reply.parts.find((p) => p.type === 'tool-open_in_api_console')!;
+    expect(done.state).toBe('output-available');
+    expect(done.output).toMatchObject({ ok: true, status: 200 });
+    // Through the hooks: the default ones redact phone numbers.
+    expect(JSON.stringify(done.output)).not.toContain('555-010-0199');
+    // The model got it.
+    expect(JSON.stringify(model.doStreamCalls.at(-1)!.prompt)).toContain('"status":200');
+
+    // A second answer to the same call isn't taken.
+    expect((await post(answered)).status).toBe(409);
+  });
+
   it('stops a reply on request and frees the chat for the next message', async () => {
     const id = 'chat-stop';
     const send = (text: string) =>

@@ -4,12 +4,18 @@
  * to the same, still-running reply.
  */
 import { Chat, useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type UIMessage } from 'ai';
+import {
+  DefaultChatTransport,
+  isToolUIPart,
+  lastAssistantMessageIsCompleteWithToolCalls,
+  type UIMessage,
+} from 'ai';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { ChatMessageMetadata, SendMessageBody } from '@oktamax/shared';
 
 import { bridgeFetch } from './bridgeFetch';
+import { answeredHere } from './pageActions';
 import { capturePageContext } from './pageContext';
 
 export type OktaChatMessage = UIMessage<ChatMessageMetadata>;
@@ -41,6 +47,14 @@ export function useChatHistory(serverUrl: string, chatId: string) {
   return { messages: history?.chatId === chatId ? history.messages : undefined, error };
 }
 
+/**
+ * Carry on with the reply once this page has answered its API console calls
+ * (`pageActions.ts`). Only those: other tools are answered by the server.
+ */
+const continuesReply = ({ messages }: { messages: OktaChatMessage[] }) =>
+  lastAssistantMessageIsCompleteWithToolCalls({ messages }) &&
+  messages.at(-1)!.parts.some((part) => isToolUIPart(part) && answeredHere.has(part.toolCallId));
+
 export function useOktaChat(serverUrl: string, chatId: string, initialMessages: OktaChatMessage[]) {
   const chat = useMemo(
     () =>
@@ -51,20 +65,21 @@ export function useOktaChat(serverUrl: string, chatId: string, initialMessages: 
           api: chatUrl(serverUrl, ''),
           fetch: bridgeFetch,
           // The server keeps the history: send only the new message, stamped with
-          // the page it was asked from.
+          // the page it was asked from, or the reply with its API console calls answered.
           prepareSendMessagesRequest: ({ id, messages }) => {
             const message = messages.at(-1)!;
             const body: SendMessageBody<OktaChatMessage> = {
-              message: {
-                ...message,
-                metadata: { ...message.metadata, page: capturePageContext() },
-              },
+              message:
+                message.role === 'user'
+                  ? { ...message, metadata: { ...message.metadata, page: capturePageContext() } }
+                  : message,
             };
             return { api: chatUrl(serverUrl, id, '/messages'), body };
           },
           // Default resume URL is `${api}/${id}/stream`; spell it out for clarity.
           prepareReconnectToStreamRequest: ({ id }) => ({ api: chatUrl(serverUrl, id, '/stream') }),
         }),
+        sendAutomaticallyWhen: continuesReply,
       }),
     // A new Chat only when switching chats; history is just the starting point.
     // eslint-disable-next-line react-hooks/exhaustive-deps

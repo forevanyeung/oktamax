@@ -386,16 +386,8 @@ export const ApiConsole = () => {
   }, [state?.open]);
 
   // Requests the chat opens here; set below once `load` exists, unset while turned off.
-  const remote = useRef<(request: ApiRequest) => void>(undefined);
-  useEffect(
-    () =>
-      setConsoleHandler((request) => {
-        if (!remote.current) return false;
-        remote.current(request);
-        return true;
-      }),
-    [],
-  );
+  const remote = useRef<(request: ApiRequest) => Promise<ApiResponse | Error>>(undefined);
+  useEffect(() => setConsoleHandler((request) => remote.current?.(request)), []);
 
   const shown = !!state?.open && enabled;
   useEffect(() => {
@@ -409,8 +401,9 @@ export const ApiConsole = () => {
     };
   }, [shown]);
 
-  const run = async (template: ApiRequest) => {
-    if (!template.url.trim()) return;
+  /** Sends the request and shows the response; returns it, or why it failed. */
+  const run = async (template: ApiRequest): Promise<ApiResponse | Error> => {
+    if (!template.url.trim()) return new Error('No URL');
     // `{userId}` and the like are filled from the page.
     const request = { ...template, url: fillTemplate(template.url, context) };
     const missing = placeholders(request.url);
@@ -421,7 +414,7 @@ export const ApiConsole = () => {
         request,
         message: `this page has no ${names}. Replace ${missing.length > 1 ? 'them' : 'it'} with an ID.`,
       });
-      return;
+      return new Error(`The path has placeholders this page can't fill: ${names}`);
     }
     setResult({ status: 'sending', request });
     const entry = (status: number, ms: number): HistoryEntry => ({
@@ -437,9 +430,11 @@ export const ApiConsole = () => {
       setState(
         (s) => s && { ...s, history: addToHistory(s.history, entry(response.status, response.ms)) },
       );
+      return response;
     } catch (error) {
       setResult({ status: 'error', request, message: String(error) });
       setState((s) => s && { ...s, history: addToHistory(s.history, entry(0, 0)) });
+      return error instanceof Error ? error : new Error(String(error));
     }
   };
 
@@ -457,7 +452,8 @@ export const ApiConsole = () => {
   const openUrl = (url: string) => load({ method: 'GET', url, body: '' }, true);
   remote.current = (request) => {
     update({ open: true });
-    load(request, true);
+    load(request);
+    return run(request);
   };
 
   const startResize = (event: React.PointerEvent<HTMLDivElement>) => {

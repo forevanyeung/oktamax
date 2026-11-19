@@ -55,8 +55,6 @@ export const OKTA_SCOPES = [
   'okta.groups.read',
   'okta.logs.read',
   'okta.policies.read',
-  // Admin roles, e.g. /api/v1/iam/roles in the API console.
-  'okta.roles.read',
   'okta.templates.read',
   'okta.users.read',
 ] as const;

@@ -67,14 +67,6 @@ export async function createOktaApp(
     (app) => app.label === LABEL,
   );
   if (existing) {
-    // Scopes added to OKTA_SCOPES since the app was made: sign-in asks for them.
-    const granted = (
-      await okta<{ scopeId: string }[]>('GET', `/api/v1/apps/${existing.id}/grants`)
-    ).map((g) => g.scopeId);
-    for (const scope of OKTA_SCOPES.filter((s) => s.startsWith('okta.') && !granted.includes(s))) {
-      await okta('POST', `/api/v1/apps/${existing.id}/grants`, { issuer: orgUrl, scopeId: scope });
-      console.log(`  granted ${scope}`);
-    }
     const current = existing.settings.oauthClient.redirect_uris;
     const missing = redirectUris.filter((uri) => !current.includes(uri));
     const grants = existing.settings.oauthClient.grant_types;

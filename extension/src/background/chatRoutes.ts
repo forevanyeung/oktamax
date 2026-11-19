@@ -2,11 +2,13 @@
  * The chat server's routes (`server/src/chat/routes.ts`), served from the service
  * worker: by the on-device assistant, and by the mock in dev builds. Like the
  * server, replies keep generating across page loads, and a new page replays the
- * one in flight. History is kept in `chrome.storage.local`.
+ * one in flight; a reply that stopped at an API console call carries on when the
+ * page posts the call's output. History is kept in `chrome.storage.local`.
  */
 import { UI_MESSAGE_STREAM_HEADERS, type UIMessage } from 'ai';
 
 import type { ChatMessageMetadata, SendMessageBody } from '@oktamax/shared';
+import { withConsoleOutputs } from '@oktamax/shared/pageTools';
 import type { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
 import type { BridgeRequest } from './messages';
@@ -49,9 +51,23 @@ export function serveChats<Context = void>(storageKey: string, start: StartReply
       return Response.json({ messages, running: running.has(chatId) });
     }
     if (route === 'POST /messages') {
-      if (running.has(chatId)) return Response.json({ error: 'busy' }, { status: 409 });
       const { message } = JSON.parse(request.body ?? '{}') as SendMessageBody<Message>;
-      const messages = [...((await loadChats())[chatId] ?? []), message];
+      // The extension answered the reply's API console calls: carry on with that reply,
+      // once the part that stopped at them has wrapped up.
+      const answering = message.role === 'assistant';
+      for (let i = 0; answering && running.has(chatId) && i < 100; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      if (running.has(chatId)) return Response.json({ error: 'busy' }, { status: 409 });
+      const history = (await loadChats())[chatId] ?? [];
+      let messages: Message[];
+      if (answering) {
+        const last = await withConsoleOutputs(history.at(-1), message, async (_, output) => output);
+        if (!last) return Response.json({ error: 'not_pending' }, { status: 409 });
+        messages = [...history.slice(0, -1), last];
+      } else {
+        messages = [...history, message];
+      }
       await saveChat(chatId, messages);
       const buffer = start(
         messages,
