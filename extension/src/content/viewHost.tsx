@@ -11,6 +11,7 @@ import { consoleStyles } from '../console/styles';
 import { dialogStyles } from '../form/styles';
 import { watchDarkMode } from '../settings';
 import { ChatLauncher } from '../chat/ChatPanel';
+import { useConsoleSession } from '../chat/consoleSession';
 import type { ViewTarget } from '../views/types';
 import { OWN_ATTR } from './dom';
 import { ViewDialog } from './ViewDialog';
@@ -29,13 +30,16 @@ const subscribe = (listener: () => void) => {
 
 const App = () => {
   const target = useSyncExternalStore(subscribe, () => current);
+  // The API console and the assistant act as the admin, so neither is shown while the admin
+  // console is signed out or its session has expired. They come back once the admin signs in.
+  const signedIn = useConsoleSession()?.state === 'active';
   return (
     <>
-      <ApiConsole />
+      {signedIn && <ApiConsole />}
       {target && (
         <ViewDialog key={target.key} target={target} onClose={() => setCurrent(undefined)} />
       )}
-      <ChatLauncher />
+      {signedIn && <ChatLauncher />}
     </>
   );
 };
