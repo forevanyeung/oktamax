@@ -1,0 +1,63 @@
+name: Update API spec
+
+# The API console's suggestions (extension/src/console/endpoints.json) are generated from Okta's
+# Management API spec and ship with each release. Weekly, this regenerates them from the latest
+# spec and, if anything changed, opens (or updates) a pull request with the changes listed.
+# Creating the PR needs "Allow GitHub Actions to create and approve pull requests" in the repo's
+# Settings → Actions → General.
+
+on:
+  schedule:
+    - cron: '17 14 * * 1' # Mondays, 14:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: api-spec
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+
+      - id: check
+        name: Compare with the latest spec
+        working-directory: extension
+        run: |
+          set +e
+          node scripts/endpoints.mjs --check > "$RUNNER_TEMP/changes.txt"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/changes.txt"
+          if [ $status -gt 1 ]; then exit $status; fi
+          echo "stale=$([ $status -eq 1 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - id: update
+        name: Regenerate and test
+        if: steps.check.outputs.stale == 'true'
+        working-directory: extension
+        run: |
+          npm run endpoints
+          npm test
+          echo "version=$(node -p "require('./src/console/endpoints.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Open a pull request
+        if: steps.check.outputs.stale == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/api-spec
+          delete-branch: true
+          add-paths: extension/src/console/endpoints.json
+          commit-message: Update the API console's endpoints to Okta's API ${{ steps.update.outputs.version }}
+          title: Update the API console's endpoints to Okta's API ${{ steps.update.outputs.version }}
+          body-path: ${{ runner.temp }}/changes.txt

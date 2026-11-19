@@ -70,7 +70,7 @@ export function splitUrl(url: string): { path: string; params: Param[] } {
 
 // Keeps the prompt readable: only escapes what would change how the query splits.
 const escapeKey = (s: string) => s.replace(/[%&=#]/g, encodeURIComponent);
-const escapeValue = (s: string) => s.replace(/[%&#]/g, encodeURIComponent);
+export const escapeValue = (s: string) => s.replace(/[%&#]/g, encodeURIComponent);
 
 export function joinUrl(path: string, params: Param[]): string {
   if (params.length === 0) return path;

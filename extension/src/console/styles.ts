@@ -147,7 +147,7 @@ export const consoleStyles = `
   box-shadow: var(--shadow) 0 6px 18px 0;
 }
 .suggestion {
-  display: grid; grid-template-columns: 56px minmax(0, max-content) minmax(0, 1fr); gap: 12px;
+  display: grid; grid-template-columns: 56px minmax(0, max-content) minmax(0, 1fr) auto; gap: 12px;
   align-items: baseline; padding: 3px 12px; cursor: pointer;
 }
 .suggestion.active { background: var(--raised); }
@@ -158,7 +158,30 @@ export const consoleStyles = `
 .suggestion-detail {
   overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis;
 }
+.suggestion.active .suggestion-detail { white-space: normal; }
+.suggestion-detail code { font-size: 11px; }
+.suggestion-type {
+  margin-right: 6px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px;
+}
+.suggestion-example code { color: var(--text); }
+.drawer .suggestion-docs, .drawer .endpoint-docs {
+  color: var(--blue); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.drawer .suggestion-docs:hover, .drawer .endpoint-docs:hover { text-decoration: underline; }
 .m-param { color: var(--muted); }
+
+.endpoint-info {
+  display: flex; flex: none; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+  margin-top: 6px; padding: 2px 10px; border-radius: 6px; background: var(--raised);
+  font-size: 12px; line-height: 20px;
+}
+.endpoint-summary { font-weight: 600; }
+.endpoint-tag { color: var(--muted); }
+.endpoint-scope {
+  padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted);
+  font: 11px/16px ${MONO_FONT};
+}
+.endpoint-info .endpoint-docs { margin-left: auto; }
 
 .request-tabs, .tabs { display: flex; gap: 2px; }
 .request-tabs { align-items: center; }

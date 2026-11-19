@@ -245,6 +245,23 @@ async function main() {
   await page.getByRole('button', { name: 'API', exact: true }).click();
   const drawer = page.getByRole('region', { name: 'API console' });
   const prompt = drawer.getByLabel('Request URL');
+  // Query parameters are suggested with their descriptions and examples, and the
+  // endpoint's summary, scope and docs link show under the prompt.
+  await prompt.fill('users?se');
+  const listbox = drawer.getByRole('listbox');
+  await listbox.getByRole('option', { name: /^\? search/ }).waitFor();
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-params.png') });
+  await prompt.press('Tab');
+  await listbox.getByRole('option').first().waitFor();
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-examples.png') });
+  await prompt.press('Escape');
+  const info = drawer.locator('.endpoint-info');
+  await info.getByText('List all users').waitFor();
+  await info.getByText('okta.users.read').waitFor();
+  assert.match(
+    (await info.getByRole('link', { name: /Docs/ }).getAttribute('href')) ?? '',
+    /\/management\/tags\/user\/other\/listusers$/,
+  );
   await prompt.fill('users?limit=2');
   await prompt.press('Enter');
   await drawer.getByText('200 OK').waitFor();

@@ -85,7 +85,8 @@ export const Prompt = forwardRef<PromptHandle, Props>(
           : { url: suggestion.url },
       );
       setActive(-1);
-      setOpen(false);
+      // A parameter's name goes on to its example values.
+      setOpen(suggestion.kind === 'param');
       if (input.current) selectPlaceholder(input.current);
     };
 
@@ -214,11 +215,36 @@ export const Prompt = forwardRef<PromptHandle, Props>(
                 onMouseEnter={() => setActive(i)}
                 onClick={() => accept(s)}
               >
-                <span className={`method m-${s.method ?? 'param'}`}>{s.method ?? '?'}</span>
+                <span className={`method m-${s.method ?? 'param'}`}>
+                  {s.method ?? (s.kind === 'value' ? '=' : '?')}
+                </span>
                 <span className="suggestion-label">
                   <Highlighted label={s.label} typed={draft.url} />
                 </span>
-                <span className="suggestion-detail">{s.detail}</span>
+                <span className="suggestion-detail">
+                  {s.type && <code className="suggestion-type">{s.type}</code>}
+                  {s.detail}
+                  {s.example && (
+                    <span className="suggestion-example">
+                      {' '}
+                      e.g. <code>{s.example}</code>
+                    </span>
+                  )}
+                </span>
+                {s.docs && i === active ? (
+                  <a
+                    className="suggestion-docs"
+                    href={s.docs}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open in Okta's API reference"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Docs ↗
+                  </a>
+                ) : (
+                  <span />
+                )}
               </li>
             ))}
           </ul>

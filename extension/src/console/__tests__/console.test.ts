@@ -5,7 +5,14 @@ import { csvFilename, flatten, toCsv } from '../csv';
 import { cell, formatBytes, isTable, oktaError, tableColumns, timeAgo } from '../format';
 import { joinUrl, resolveUrl, splitMethod, splitUrl } from '../request';
 import { addToHistory, type HistoryEntry } from '../store';
-import { objectPath, suggest, type Endpoint, type Suggestion } from '../suggest';
+import {
+  docsUrl,
+  endpointFor,
+  objectPath,
+  suggest,
+  type Endpoint,
+  type Suggestion,
+} from '../suggest';
 
 const ORIGIN = 'https://acme-admin.okta.com';
 
@@ -146,9 +153,20 @@ describe('page context', () => {
 
 describe('suggestions', () => {
   const endpoints: Endpoint[] = [
-    { m: 'GET', p: '/api/v1/users', s: 'List all users', t: 'User', q: ['search', 'limit'] },
+    {
+      m: 'GET',
+      p: '/api/v1/users',
+      s: 'List all users',
+      t: 'User',
+      id: 'listUsers',
+      q: [
+        { n: 'search', ty: 'string', d: 'Searches for users.', x: ['status eq "STAGED"'] },
+        { n: 'limit', ty: 'integer' },
+      ],
+    },
     { m: 'POST', p: '/api/v1/users', s: 'Create a user', t: 'User' },
     { m: 'GET', p: '/api/v1/users/{userId}', s: 'Retrieve a user', t: 'User' },
+    { m: 'GET', p: '/api/v1/users/me', s: 'Retrieve the current user', t: 'User' },
     { m: 'GET', p: '/api/v1/users/{userId}/groups', s: 'List all groups of a user', t: 'User' },
     { m: 'GET', p: '/api/v1/groups/{groupId}/users', s: 'List all member users', t: 'Group' },
   ];
@@ -159,6 +177,7 @@ describe('suggestions', () => {
       'GET /api/v1/users',
       'POST /api/v1/users',
       'GET /api/v1/users/{userId}',
+      'GET /api/v1/users/me',
       'GET /api/v1/users/{userId}/groups',
     ]);
     expect(labels(suggest('/api/v1/users/00u9/g', 'GET', {}, endpoints))).toEqual([
@@ -189,5 +208,32 @@ describe('suggestions', () => {
       'users?limit=5&search=',
     ]);
     expect(suggest('users?limit=', 'GET', {}, endpoints)).toEqual([]);
+  });
+
+  it("describes query parameters and suggests a parameter's examples", () => {
+    const [search] = suggest('users?s', 'GET', {}, endpoints);
+    expect(search).toMatchObject({
+      kind: 'param',
+      detail: 'Searches for users.',
+      type: 'string',
+      example: 'status eq "STAGED"',
+    });
+    expect(suggest('users?search=st', 'GET', {}, endpoints).map((s) => s.url)).toEqual([
+      'users?search=status eq "STAGED"',
+    ]);
+    expect(suggest('users?search=status eq "STAGED"', 'GET', {}, endpoints)).toEqual([]);
+  });
+
+  it('finds the endpoint a request goes to, and its docs', () => {
+    const get = (url: string) => endpointFor(url, 'GET', endpoints)?.p;
+    expect(get('users?limit=5')).toBe('/api/v1/users');
+    expect(get('/api/v1/users/00u1')).toBe('/api/v1/users/{userId}');
+    expect(get('/api/v1/users/{userId}')).toBe('/api/v1/users/{userId}');
+    expect(get('/api/v1/users/me')).toBe('/api/v1/users/me');
+    expect(get('/api/v1/use')).toBeUndefined();
+    expect(endpointFor('users', 'DELETE', endpoints)).toBeUndefined();
+    expect(docsUrl(endpoints[0]!)).toBe(
+      'https://developer.okta.com/docs/api/openapi/okta-management/management/tags/user/other/listusers',
+    );
   });
 });

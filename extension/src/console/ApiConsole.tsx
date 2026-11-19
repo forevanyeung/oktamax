@@ -13,7 +13,7 @@ import { setConsoleHandler } from './remote';
 import { Prompt, type PromptHandle } from './Prompt';
 import { joinUrl, send, splitUrl, type ApiRequest, type ApiResponse, type Param } from './request';
 import { ResponseView } from './ResponseView';
-import { objectPath } from './suggest';
+import { docsUrl, endpointFor, objectPath, type Endpoint } from './suggest';
 import { addToHistory, loadState, saveState, type ConsoleState, type HistoryEntry } from './store';
 
 type Result =
@@ -80,8 +80,40 @@ const DOUBLE_PRESS_MS = 300;
 const DRAG_THRESHOLD = 4;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ParamsEditor = ({ url, onChange }: { url: string; onChange: (url: string) => void }) => {
+/** The endpoint the prompt's request goes to: what it does, the scopes it needs, its docs. */
+const EndpointInfo = ({ endpoint }: { endpoint: Endpoint }) => {
+  const docs = docsUrl(endpoint);
+  return (
+    <div className="endpoint-info">
+      <span className={`method m-${endpoint.m}`}>{endpoint.m}</span>
+      <span className="endpoint-summary">{endpoint.s}</span>
+      {endpoint.t && <span className="endpoint-tag">· {endpoint.t}</span>}
+      {endpoint.sc?.map((scope) => (
+        <span key={scope} className="endpoint-scope" title="OAuth scope this endpoint needs">
+          {scope}
+        </span>
+      ))}
+      {docs && (
+        <a className="endpoint-docs" href={docs} target="_blank" rel="noreferrer">
+          Docs ↗
+        </a>
+      )}
+    </div>
+  );
+};
+
+const ParamsEditor = ({
+  url,
+  endpoint,
+  onChange,
+}: {
+  url: string;
+  endpoint?: Endpoint;
+  onChange: (url: string) => void;
+}) => {
   const { path, params } = splitUrl(url);
+  const known = endpoint?.q ?? [];
+  const hintFor = (key: string) => known.find((p) => p.n === key);
   const rows = [...params, { key: '', value: '' }];
   const update = (index: number, change: Partial<Param>) =>
     onChange(
@@ -101,44 +133,64 @@ const ParamsEditor = ({ url, onChange }: { url: string; onChange: (url: string) 
     );
 
   return (
-    <table className="grid params">
-      <thead>
-        <tr>
-          <th>Key</th>
-          <th>Value</th>
-          <th aria-label="Remove" />
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((param, i) => (
-          <tr key={i}>
-            <td>
-              <input
-                className="cell-input"
-                value={param.key}
-                placeholder={i === params.length ? 'Add a parameter' : ''}
-                onChange={(e) => update(i, { key: e.target.value })}
-              />
-            </td>
-            <td>
-              <input
-                className="cell-input"
-                value={param.value}
-                placeholder={i === params.length ? 'value' : ''}
-                onChange={(e) => update(i, { value: e.target.value })}
-              />
-            </td>
-            <td className="remove">
-              {i < params.length && (
-                <button type="button" className="icon" title="Remove" onClick={() => remove(i)}>
-                  ×
-                </button>
-              )}
-            </td>
+    <>
+      <table className="grid params">
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Value</th>
+            <th aria-label="Remove" />
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((param, i) => {
+            const hint = hintFor(param.key);
+            const example = hint?.x?.[0];
+            return (
+              <tr key={i} title={hint?.d}>
+                <td>
+                  <input
+                    className="cell-input"
+                    value={param.key}
+                    list={known.length ? 'oktamax-param-names' : undefined}
+                    placeholder={i === params.length ? 'Add a parameter' : ''}
+                    onChange={(e) => update(i, { key: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <input
+                    className="cell-input"
+                    value={param.value}
+                    placeholder={
+                      example
+                        ? `e.g. ${example}`
+                        : (hint?.ty ?? (i === params.length ? 'value' : ''))
+                    }
+                    onChange={(e) => update(i, { value: e.target.value })}
+                  />
+                </td>
+                <td className="remove">
+                  {i < params.length && (
+                    <button type="button" className="icon" title="Remove" onClick={() => remove(i)}>
+                      ×
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {known.length > 0 && (
+        <datalist id="oktamax-param-names">
+          {known
+            .filter((p) => !params.some((used) => used.key === p.n))
+            .map((p) => (
+              <option key={p.n} value={p.n} label={p.d} />
+            ))}
+        </datalist>
+      )}
+    </>
   );
 };
 
@@ -534,6 +586,7 @@ export const ApiConsole = () => {
   }
 
   const paramCount = splitUrl(draft.url).params.length;
+  const endpoint = draft.url.trim() ? endpointFor(draft.url, draft.method) : undefined;
   const sending = result.status === 'sending';
 
   return (
@@ -597,6 +650,7 @@ export const ApiConsole = () => {
               </button>
             </div>
           </div>
+          {endpoint && <EndpointInfo endpoint={endpoint} />}
           <div className="request-tabs" role="tablist">
             {(
               [
@@ -636,7 +690,11 @@ export const ApiConsole = () => {
           {panel && (
             <div className="request-panel">
               {panel === 'params' ? (
-                <ParamsEditor url={draft.url} onChange={(url) => setDraft({ url })} />
+                <ParamsEditor
+                  url={draft.url}
+                  endpoint={endpoint}
+                  onChange={(url) => setDraft({ url })}
+                />
               ) : (
                 <BodyEditor
                   request={draft}
