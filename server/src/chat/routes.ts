@@ -23,11 +23,13 @@ import {
 import { Hono } from 'hono';
 import * as z from 'zod';
 
+import { withConsoleOutputs } from '@oktamax/shared/pageTools';
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
 import { orgFromHeader, principalKey, requireAuth } from '../auth';
+import { ToolHooks } from '../mcp/hooks';
 import type { OktaMcpProcessPool } from '../mcp/processPool';
-import { pageTools } from './pageTools';
+import { consoleOutput, pageTools } from './pageTools';
 import { instructions, withPageContext } from './prompt';
 import type { Chat, ChatMessage, ChatStore } from './store';
 
@@ -38,6 +40,8 @@ export interface ChatDeps {
   mcpUrl: string;
   /** The admins' Okta MCP processes behind `mcpUrl`, started early when a chat opens. */
   oktaMcp: Pick<OktaMcpProcessPool, 'prepare'>;
+  /** Rules for every MCP tool call (`mcp/hooks/`), also applied to API console responses. */
+  hooks?: ToolHooks;
 }
 
 const pageContextSchema = z.object({
@@ -50,7 +54,20 @@ const pageContextSchema = z.object({
 });
 const metadataSchema = z.object({ page: pageContextSchema.optional() }).optional();
 
-export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
+/** Waits up to `ms` for the chat's reply to finish. */
+async function settled(chat: Chat, ms = 5_000) {
+  for (const end = Date.now() + ms; chat.active && Date.now() < end;) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+export function createChatRoutes({
+  model,
+  store,
+  mcpUrl,
+  oktaMcp,
+  hooks = new ToolHooks(),
+}: ChatDeps) {
   // The extension says which org's admin console the chat is on (X-Okta-Org).
   const chatRoutes = new Hono().use(requireAuth(orgFromHeader));
 
@@ -80,13 +97,27 @@ export function createChatRoutes({ model, store, mcpUrl, oktaMcp }: ChatDeps) {
     const principal = c.var.principal;
     const chat = loadChat(c.req.param('id'), principalKey(principal), true);
     if (chat instanceof Response) return chat;
-    if (chat.active) return c.json({ error: 'busy' }, 409);
-
-    const { message } = await c.req.json<{ message: unknown }>();
-    chat.messages = await validateUIMessages<ChatMessage>({
-      messages: [...chat.messages, message],
+    const body = await c.req.json<{ message: unknown }>();
+    const [message] = await validateUIMessages<ChatMessage>({
+      messages: [body.message],
       metadataSchema,
     });
+    const answering = message!.role === 'assistant';
+    // The reply that stopped at the console call may still be wrapping up.
+    if (answering) await settled(chat);
+    if (chat.active) return c.json({ error: 'busy' }, 409);
+
+    if (answering) {
+      // The extension ran the reply's API console calls: take their outputs, and
+      // carry on with the same reply.
+      const last = await withConsoleOutputs(chat.messages.at(-1), message!, (input, output) =>
+        consoleOutput(principal, hooks, input, output),
+      );
+      if (!last) return c.json({ error: 'not_pending' }, 409);
+      chat.messages = [...chat.messages.slice(0, -1), last];
+    } else {
+      chat.messages = [...chat.messages, message!];
+    }
     store.save(chat);
 
     // The MCP server gets the admin's own token, so every Okta call is made as them.

@@ -8,7 +8,6 @@ import { requireAuth } from './auth';
 import { createChatRoutes, type ChatDeps } from './chat/routes';
 import { config } from './config';
 import { handleMcpRequest } from './mcp/gateway';
-import type { ToolHooks } from './mcp/hooks';
 import { createOAuthRoutes, signInChallenge } from './mcp/oauth';
 import type { OktaMcpProcessPool } from './mcp/processPool';
 
@@ -20,8 +19,6 @@ const requestLog = logger();
 export const createApp = (
   deps: ChatDeps & {
     oktaMcp: OktaMcpProcessPool;
-    /** Rules for every MCP tool call (`mcp/hooks/`). None when left out. */
-    hooks?: ToolHooks;
   },
 ) =>
   new Hono()

@@ -155,16 +155,48 @@ async function main() {
     await input.fill(question);
     await input.press('Enter');
   };
+  // The first request never answers: the admin leaves the page while it's out.
+  const logs: string[] = [];
+  await context.route(`${ADMIN}/api/v1/logs**`, (route) => {
+    logs.push(route.request().method());
+    if (logs.length === 1) return; // left hanging
+    return route.fulfill({ json: [{ eventType: 'user.authentication.sso' }] });
+  });
   await ask('Bring up the logs for today');
-  await reloaded.getByText('Opened in the API console:').waitFor();
-  await page.waitForFunction(() =>
-    (
-      document
-        .querySelector('[data-oktamax="host"]')!
-        .shadowRoot!.querySelector('[aria-label="Request URL"]') as HTMLInputElement | null
-    )?.value.startsWith('/api/v1/logs?filter='),
+  const consoleUrl = () =>
+    page.waitForFunction(() =>
+      (
+        document
+          .querySelector('[data-oktamax="host"]')!
+          .shadowRoot!.querySelector('[aria-label="Request URL"]') as HTMLInputElement | null
+      )?.value.startsWith('/api/v1/logs?filter='),
+    );
+  await consoleUrl();
+  for (let i = 0; logs.length === 0 && i < 50; i++) await page.waitForTimeout(100);
+  assert.equal(logs.length, 1, 'the console sent the request');
+
+  // --- A new page sends the call again, and the reply carries on ----------------
+  await page.goto(`${ADMIN}/admin/users`);
+  const after = page.getByRole('dialog', { name: 'Okta assistant' });
+  await after
+    .getByText('I opened the sign-in logs in the API console.')
+    .waitFor({ timeout: 10_000 });
+  await after.getByText('Opened in the API console:').waitFor();
+  await consoleUrl();
+  // One request per page: the chat has no other way to get it.
+  assert.deepEqual(logs, ['GET', 'GET']);
+  const answered = store
+    .get(chatId)!
+    .messages.at(-1)!
+    .parts.find((part) => part.type === 'tool-open_in_api_console') as
+    | { state: string; output: { ok: boolean; status: number; response: string } }
+    | undefined;
+  assert.equal(answered?.state, 'output-available');
+  assert.equal(answered.output.status, 200);
+  assert.ok(
+    answered.output.response.includes('user.authentication.sso'),
+    "the model got the console's response",
   );
-  await reloaded.getByText('I opened the sign-in logs in the API console.').waitFor();
 
   // --- Page actions: navigate, once ----------------------------------------------
   await ask('Go to my groups');

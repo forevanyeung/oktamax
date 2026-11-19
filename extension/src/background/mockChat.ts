@@ -5,7 +5,7 @@
  * Serves the same routes as `server/src/chat/routes.ts` (see `chatRoutes.ts`),
  * with canned replies that stream word by word, look things up, and know the page.
  */
-import { createUIMessageStream, JsonToSseTransformStream } from 'ai';
+import { createUIMessageStream, getToolName, isToolUIPart, JsonToSseTransformStream } from 'ai';
 
 import type { PageContext } from '@oktamax/shared';
 import {
@@ -13,23 +13,46 @@ import {
   NAVIGATE,
   OPEN_IN_API_CONSOLE,
   PAGE_TOOLS,
+  type ApiConsoleOutput,
 } from '@oktamax/shared/pageTools';
 import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 
-import { serveChats, type StartReply } from './chatRoutes';
+import { serveChats, type Message, type StartReply } from './chatRoutes';
 
 interface Lookup {
   tool: string;
   input: unknown;
-  output: unknown;
+  /** Left out for an API console call: the reply stops there, for the page to answer. */
+  output?: unknown;
 }
 
-/** A page tool call; its output comes from the same checks as the server's. */
-const pageTool = (tool: string, path: string): Lookup => ({
-  tool,
-  input: { path },
-  output: checkPageTool(tool, { path }),
-});
+/** A page tool call. Like the server: navigation is checked here, API console calls wait. */
+const pageTool = (tool: string, path: string): Lookup =>
+  tool === OPEN_IN_API_CONSOLE
+    ? { tool, input: { path } }
+    : { tool, input: { path }, output: checkPageTool(tool, { path }) };
+
+/** What the mock says about the console's response, once the page has posted it. */
+function consoleSummary(message: Message): string {
+  const outputs = message.parts.flatMap((part) =>
+    isToolUIPart(part) &&
+    getToolName(part) === OPEN_IN_API_CONSOLE &&
+    part.state === 'output-available'
+      ? [part.output as ApiConsoleOutput]
+      : [],
+  );
+  const output = outputs.at(-1);
+  if (!output) return '';
+  if (!output.ok) return `\n\nThe request failed: ${output.error}`;
+  let count = '';
+  try {
+    const json: unknown = JSON.parse(output.response);
+    if (Array.isArray(json)) count = `, ${json.length} ${json.length === 1 ? 'item' : 'items'}`;
+  } catch {
+    // Not JSON.
+  }
+  return `\n\nThe console got **${output.status}**${count}${output.next ? ', with more pages' : ''}.`;
+}
 
 interface Reply {
   lookups?: Lookup[];
@@ -174,9 +197,13 @@ const sleep = (ms: number, signal: AbortSignal) =>
   });
 
 const start: StartReply = (messages, save) => {
-  const question = messages.at(-1)!;
+  // Carrying on with a reply whose API console calls the page has answered.
+  const answered = messages.at(-1)!.role === 'assistant' ? messages.at(-1) : undefined;
+  const question = messages.findLast((m) => m.role === 'user')!;
   const text = question.parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
   const answer = reply(text, question.metadata?.page);
+  if (answered) answer.text += consoleSummary(answered);
+  const lookups = answered ? [] : (answer.lookups ?? []);
   const abort = new AbortController();
   const { signal } = abort;
 
@@ -185,8 +212,8 @@ const start: StartReply = (messages, save) => {
     generateId: () => crypto.randomUUID(),
     execute: async ({ writer }) => {
       writer.write({ type: 'start' });
-      for (const [i, lookup] of (answer.lookups ?? []).entries()) {
-        const toolCallId = `mock-${i}`;
+      for (const [i, lookup] of lookups.entries()) {
+        const toolCallId = `mock-${i}-${crypto.randomUUID()}`;
         writer.write({ type: 'start-step' });
         // Okta's tools come from MCP (dynamic); the page tools are the server's own.
         const dynamic = !(PAGE_TOOLS as readonly string[]).includes(lookup.tool);
@@ -197,6 +224,11 @@ const start: StartReply = (messages, save) => {
           input: lookup.input,
           dynamic,
         });
+        if (!('output' in lookup)) {
+          // Waits for the page to send the request and post its response.
+          writer.write({ type: 'finish-step' });
+          return writer.write({ type: 'finish' });
+        }
         await sleep(LOOKUP_MS, signal);
         if (signal.aborted) return writer.write({ type: 'abort' });
         writer.write({ type: 'tool-output-available', toolCallId, output: lookup.output, dynamic });
