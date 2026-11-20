@@ -78,6 +78,8 @@ const SLIDE = { duration: 320, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' };
 const DOUBLE_PRESS_MS = 300;
 /** How far the tab has to move before a press counts as a drag, not a click. */
 const DRAG_THRESHOLD = 4;
+/** How long the pointer rests on a parameter before its description shows: half of Chrome's own tooltip delay on macOS. */
+const HINT_DELAY_MS = 500;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
@@ -241,6 +243,16 @@ const ParamsEditor = ({
   const known = endpoint?.q ?? [];
   const hintFor = (key: string) => known.find((p) => p.n === key);
   const unused = known.filter((p) => !params.some((used) => used.key === p.n));
+
+  // A parameter's description, shown under its row once the pointer rests on it.
+  const [hover, setHover] = useState<{ index: number; rect: DOMRect }>();
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  const hideHint = () => {
+    clearTimeout(hoverTimer.current);
+    setHover(undefined);
+  };
+  const hovered = hover && hintFor(params[hover.index]?.key ?? '');
   const rows = [...params, { key: '', value: '' }];
   const update = (index: number, change: Partial<Param>) =>
     onChange(
@@ -274,7 +286,21 @@ const ParamsEditor = ({
             const hint = hintFor(param.key);
             const example = hint?.x?.[0];
             return (
-              <tr key={i} title={hint?.d}>
+              <tr
+                key={i}
+                onMouseEnter={(e) => {
+                  hideHint();
+                  if (!hint?.d) return;
+                  const row = e.currentTarget;
+                  hoverTimer.current = setTimeout(
+                    () => setHover({ index: i, rect: row.getBoundingClientRect() }),
+                    HINT_DELAY_MS,
+                  );
+                }}
+                onMouseLeave={hideHint}
+                onMouseDown={hideHint}
+                onKeyDown={hideHint}
+              >
                 <td>
                   <KeyCell
                     id={`oktamax-param-keys-${i}`}
@@ -308,6 +334,21 @@ const ParamsEditor = ({
           })}
         </tbody>
       </table>
+      {hover && hovered?.d && (
+        <div
+          className="param-hint"
+          role="tooltip"
+          style={
+            innerHeight - hover.rect.bottom >= 80
+              ? { left: hover.rect.left, top: hover.rect.bottom + 4 }
+              : { left: hover.rect.left, bottom: innerHeight - hover.rect.top + 4 }
+          }
+        >
+          <code>{hovered.n}</code>
+          {hovered.ty && <span className="param-hint-type">{hovered.ty}</span>}
+          <span>{hovered.d}</span>
+        </div>
+      )}
     </>
   );
 };

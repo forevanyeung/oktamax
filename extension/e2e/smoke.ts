@@ -280,6 +280,15 @@ async function main() {
   await key.press('ArrowDown');
   await key.press('Enter');
   assert.equal(await prompt.inputValue(), 'users?search');
+  // Resting on a parameter's row shows its description after half a second.
+  const paramHint = drawer.getByRole('tooltip');
+  await key.hover();
+  await page.waitForTimeout(250);
+  assert.equal(await paramHint.count(), 0, 'the hint waits for the pointer to rest');
+  await paramHint.getByText(/Searches for users/).waitFor({ timeout: 1000 });
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-param-hint.png') });
+  await page.mouse.move(0, 0);
+  await paramHint.waitFor({ state: 'detached' });
   await paramsTab.click();
   await prompt.fill('users?limit=2');
   await prompt.press('Enter');

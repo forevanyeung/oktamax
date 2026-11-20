@@ -231,6 +231,15 @@ export const consoleStyles = `
 .key-suggestion.active { background: var(--raised); }
 .key-name { font: 12px/20px ${MONO_FONT}; }
 .key-type { color: var(--muted); font: 11px/20px ${MONO_FONT}; }
+.param-hint {
+  position: fixed; z-index: 3; display: flex; flex-wrap: wrap; gap: 2px 8px; max-width: 480px;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); box-shadow: var(--shadow) 0 6px 18px 0;
+  font-size: 12px; line-height: 18px; pointer-events: none;
+}
+.param-hint code { font-weight: 600; }
+.param-hint-type { color: var(--muted); font: 11px/18px ${MONO_FONT}; }
+.param-hint > span:last-child { flex-basis: 100%; color: var(--muted); }
 .key-detail { overflow: hidden; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
 
 .body-editor { display: flex; flex-direction: column; gap: 6px; }
