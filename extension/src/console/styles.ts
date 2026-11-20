@@ -111,7 +111,6 @@ export const consoleStyles = `
 
 .work {
   display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 10px 12px 0;
-  container: work / inline-size;
 }
 .prompt {
   display: flex; flex: none; border: 1px solid var(--border); border-radius: 8px;
@@ -174,19 +173,14 @@ export const consoleStyles = `
 .m-param { color: var(--muted); }
 
 .endpoint-info {
-  display: flex; flex: 0 1 auto; align-items: center; gap: 8px; min-width: 0;
+  display: flex; flex: none; align-items: center; gap: 8px;
   margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border);
   font-size: 12px; line-height: 20px; white-space: nowrap;
 }
-.endpoint-summary { min-width: 40px; overflow: hidden; text-overflow: ellipsis; }
-.endpoint-tag { flex: none; color: var(--muted); }
 .endpoint-scope {
-  flex: none; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px;
+  padding: 0 5px; border: 1px solid var(--border); border-radius: 4px;
   color: var(--muted); font: 11px/16px ${MONO_FONT};
 }
-.endpoint-info .endpoint-docs { flex: none; }
-/* A narrow drawer keeps the summary and the docs. */
-@container work (max-width: 640px) { .endpoint-tag, .endpoint-scope { display: none; } }
 
 .request-tabs, .tabs { display: flex; gap: 2px; }
 .request-tabs { align-items: center; min-width: 0; }

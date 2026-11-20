@@ -82,8 +82,7 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 
 /**
  * The endpoint the prompt's request goes to, beside the Params and Body tabs:
- * what it does, the scope it needs and its docs. The summary gives way first
- * when the row is short of room; the tooltip has it all.
+ * the scope it needs and its docs. The tooltip says what it does.
  */
 const EndpointInfo = ({ endpoint }: { endpoint: Endpoint }) => {
   const docs = docsUrl(endpoint);
@@ -91,15 +90,12 @@ const EndpointInfo = ({ endpoint }: { endpoint: Endpoint }) => {
   const title = [
     `${endpoint.m} ${endpoint.p}`,
     endpoint.s,
-    endpoint.t && `API: ${endpoint.t}`,
     endpoint.sc?.length && `Scopes: ${endpoint.sc.join(', ')}`,
   ]
     .filter(Boolean)
     .join('\n');
   return (
     <div className="endpoint-info" title={title}>
-      <span className="endpoint-summary">{endpoint.s}</span>
-      {endpoint.t && <span className="endpoint-tag">{endpoint.t}</span>}
       {scope && (
         <span className="endpoint-scope">
           {scope}

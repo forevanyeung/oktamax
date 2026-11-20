@@ -256,8 +256,8 @@ async function main() {
   await page.screenshot({ path: join(import.meta.dirname, 'api-console-examples.png') });
   await prompt.press('Escape');
   const info = drawer.locator('.endpoint-info');
-  await info.getByText('List all users').waitFor();
   await info.getByText('okta.users.read').waitFor();
+  assert.match((await info.getAttribute('title')) ?? '', /List all users/);
   assert.match(
     (await info.getByRole('link', { name: /Docs/ }).getAttribute('href')) ?? '',
     /\/management\/tags\/user\/other\/listusers$/,
