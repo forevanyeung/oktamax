@@ -80,19 +80,32 @@ const DOUBLE_PRESS_MS = 300;
 const DRAG_THRESHOLD = 4;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** The endpoint the prompt's request goes to: what it does, the scopes it needs, its docs. */
+/**
+ * The endpoint the prompt's request goes to, beside the Params and Body tabs:
+ * what it does, the scope it needs and its docs. The summary gives way first
+ * when the row is short of room; the tooltip has it all.
+ */
 const EndpointInfo = ({ endpoint }: { endpoint: Endpoint }) => {
   const docs = docsUrl(endpoint);
+  const [scope, ...more] = endpoint.sc ?? [];
+  const title = [
+    `${endpoint.m} ${endpoint.p}`,
+    endpoint.s,
+    endpoint.t && `API: ${endpoint.t}`,
+    endpoint.sc?.length && `Scopes: ${endpoint.sc.join(', ')}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
   return (
-    <div className="endpoint-info">
-      <span className={`method m-${endpoint.m}`}>{endpoint.m}</span>
+    <div className="endpoint-info" title={title}>
       <span className="endpoint-summary">{endpoint.s}</span>
-      {endpoint.t && <span className="endpoint-tag">· {endpoint.t}</span>}
-      {endpoint.sc?.map((scope) => (
-        <span key={scope} className="endpoint-scope" title="OAuth scope this endpoint needs">
+      {endpoint.t && <span className="endpoint-tag">{endpoint.t}</span>}
+      {scope && (
+        <span className="endpoint-scope">
           {scope}
+          {more.length > 0 && ` +${more.length}`}
         </span>
-      ))}
+      )}
       {docs && (
         <a className="endpoint-docs" href={docs} target="_blank" rel="noreferrer">
           Docs ↗
@@ -650,25 +663,27 @@ export const ApiConsole = () => {
               </button>
             </div>
           </div>
-          {endpoint && <EndpointInfo endpoint={endpoint} />}
-          <div className="request-tabs" role="tablist">
-            {(
-              [
-                ['params', `Params${paramCount ? ` (${paramCount})` : ''}`],
-                ['body', `Body${draft.body.trim() ? ' •' : ''}`],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={panel === id}
-                className={panel === id ? 'tab active' : 'tab'}
-                onClick={() => setPanel(panel === id ? undefined : id)}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="request-tabs">
+            <div className="tabs" role="tablist">
+              {(
+                [
+                  ['params', `Params${paramCount ? ` (${paramCount})` : ''}`],
+                  ['body', `Body${draft.body.trim() ? ' •' : ''}`],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={panel === id}
+                  className={panel === id ? 'tab active' : 'tab'}
+                  onClick={() => setPanel(panel === id ? undefined : id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {endpoint && <EndpointInfo endpoint={endpoint} />}
             <div className="spacer" />
             {Object.entries(context).map(([name, value]) => {
               const path = objectPath(name, context);
