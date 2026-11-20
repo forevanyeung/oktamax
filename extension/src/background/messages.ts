@@ -29,6 +29,19 @@ export type AuthStatus =
   | { state: 'off' }
   /** The chat server can't be reached (in production builds). */
   | { state: 'unreachable'; serverUrl: string; error: string }
+  /**
+   * The extension and chat server are too far apart in version to work together: `update` says
+   * which one is behind (`shared/src/version.ts`).
+   */
+  | {
+      state: 'incompatible';
+      update: 'extension' | 'server';
+      serverUrl: string;
+      extensionVersion: string;
+      serverVersion: string;
+      /** The oldest version of the side that's behind that would work. */
+      minVersion: string;
+    }
   /** Dev builds without a reachable chat server: replies come from `mockChat.ts`. */
   | { state: 'mock' }
   /** On-device: Chrome's built-in model can't run here, or hasn't been downloaded yet. */

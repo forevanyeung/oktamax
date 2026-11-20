@@ -4,8 +4,8 @@ import { completionsAt, lintBody, skeleton, type BodyField, type BodySchema } fr
 import { fillTemplate, pageContext, placeholders } from '../context';
 import { csvFilename, flatten, toCsv } from '../csv';
 import { cell, formatBytes, isTable, oktaError, tableColumns, timeAgo } from '../format';
-import { joinUrl, resolveUrl, splitMethod, splitUrl } from '../request';
 import { cursorAt, keyAt, parseJson } from '../jsonDoc';
+import { joinUrl, resolveUrl, splitMethod, splitUrl, stepUpChallenge, stepUpUrl } from '../request';
 import { addToHistory, type HistoryEntry } from '../store';
 import {
   docsUrl,
@@ -46,6 +46,20 @@ describe('request', () => {
     expect(resolveUrl('https://acme.okta.com/api/v1/apps?limit=2', ORIGIN).href).toBe(
       `${ORIGIN}/api/v1/apps?limit=2`,
     );
+  });
+
+  it("reads Okta's step-up challenge for a protected action", () => {
+    // As Okta sends it for `PUT /api/v1/idps/{id}`.
+    const header =
+      'error="insufficient_user_authentication", authorization_uri="/admin/sso/oidc-entry", max_age="60" , acr_values="urn:okta:loa:2fa:any"';
+    const challenge = stepUpChallenge(401, header);
+    expect(challenge).toEqual({ maxAge: '60', acrValues: 'urn:okta:loa:2fa:any' });
+    expect(stepUpUrl(challenge!, ORIGIN)).toBe(
+      `${ORIGIN}/admin/sso/step-up?max_age=60&acr_values=urn%3Aokta%3Aloa%3A2fa%3Aany`,
+    );
+    expect(stepUpChallenge(403, header)).toBeUndefined();
+    expect(stepUpChallenge(401, 'Bearer error="invalid_token"')).toBeUndefined();
+    expect(stepUpChallenge(401, null)).toBeUndefined();
   });
 });
 

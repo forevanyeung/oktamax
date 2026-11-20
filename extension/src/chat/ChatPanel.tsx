@@ -73,7 +73,9 @@ const Conversation = ({
         <div className="chat-banner chat-failed" role="alert">
           {chat.error.message.includes('signin_required')
             ? 'Your session expired. Close and reopen the chat to sign in again.'
-            : chat.error.message}
+            : /extension_outdated|incompatible/.test(chat.error.message)
+              ? 'The chat server was updated and no longer works with this version of Okta Max. Close and reopen the chat for details.'
+              : chat.error.message}
         </div>
       )}
       <Thread onStop={() => void chat.stop()} />
@@ -200,6 +202,34 @@ const Notice = ({
         Okta Max toolbar popup.
       </p>
       <p className="chat-note">{status.error}</p>
+      <button type="button" className="chat-button" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  ) : status.state === 'incompatible' ? (
+    <div className="chat-notice">
+      {status.update === 'extension' ? (
+        <>
+          <p>
+            <strong>Okta Max needs updating.</strong> The chat server at{' '}
+            <code>{status.serverUrl}</code> needs version {status.minVersion} or newer; this is{' '}
+            {status.extensionVersion}.
+          </p>
+          <p>
+            Chrome updates extensions on its own within a few hours. To update now, open{' '}
+            <code>chrome://extensions</code>, turn on Developer mode and click Update.
+          </p>
+        </>
+      ) : (
+        <>
+          <p>
+            <strong>The chat server needs updating.</strong> This version of Okta Max (
+            {status.extensionVersion}) needs server version {status.minVersion} or newer; the server
+            at <code>{status.serverUrl}</code> is {status.serverVersion}.
+          </p>
+          <p>Ask whoever runs Okta Max for your organization to update it.</p>
+        </>
+      )}
       <button type="button" className="chat-button" onClick={onRetry}>
         Try again
       </button>

@@ -38,6 +38,10 @@ export interface OrgConfig {
 /** `GET /api/config`: public settings the extension needs before signing in. */
 export interface ServerConfig {
   orgs: OrgConfig[];
+  /** The server's version. Missing from servers older than version reporting (`UNVERSIONED`). */
+  version?: string;
+  /** The oldest extension version the server works with. */
+  minExtensionVersion?: string;
 }
 
 /**

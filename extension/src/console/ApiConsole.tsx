@@ -19,7 +19,7 @@ import { addToHistory, loadState, saveState, type ConsoleState, type HistoryEntr
 
 type Result =
   | { status: 'idle' }
-  | { status: 'sending'; request: ApiRequest }
+  | { status: 'sending'; request: ApiRequest; stepUp?: boolean }
   | { status: 'done'; request: ApiRequest; response: ApiResponse; id: number }
   | { status: 'error'; request: ApiRequest; message: string };
 
@@ -595,7 +595,9 @@ export const ApiConsole = () => {
       at: Date.now(),
     });
     try {
-      const response = await send(request);
+      const response = await send(request, {
+        onStepUp: () => setResult({ status: 'sending', request, stepUp: true }),
+      });
       setResult({ status: 'done', request, response, id: ++responses.current });
       setState(
         (s) => s && { ...s, history: addToHistory(s.history, entry(response.status, response.ms)) },
@@ -827,7 +829,9 @@ export const ApiConsole = () => {
           )}
           {result.status === 'sending' && (
             <p className="hint placeholder">
-              Sending {result.request.method} {result.request.url}…
+              {result.stepUp
+                ? `This is a protected action. Verify it's you in the pop-up to send ${result.request.method} ${result.request.url}…`
+                : `Sending ${result.request.method} ${result.request.url}…`}
             </p>
           )}
           {result.status === 'error' && (
