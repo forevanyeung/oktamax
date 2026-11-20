@@ -102,8 +102,8 @@ const changes = log
       /BREAKING[ -]CHANGE/.test(body) ||
       /^[a-z]+!\//.test(branch) ||
       /^[a-z]+(\(.+\))?!:/.test(title);
-    const feature = /^feat/.test(branch) || /^feat(\(.+\))?!?:/.test(title);
-    const fix = /^fix/.test(branch) || /^fix(\(.+\))?!?:/.test(title);
+    const feature = branch.startsWith('feat') || /^feat(\(.+\))?!?:/.test(title);
+    const fix = branch.startsWith('fix') || /^fix(\(.+\))?!?:/.test(title);
     return {
       sha,
       pr: pr?.[1],

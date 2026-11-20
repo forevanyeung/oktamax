@@ -18,19 +18,19 @@
     "verify:okta-mcp": "vpx scripts/verify-okta-mcp.ts"
   },
   "dependencies": {
-    "@ai-sdk/amazon-bedrock": "^5.0.130",
-    "@ai-sdk/anthropic": "^4.0.94",
-    "@ai-sdk/mcp": "^2.0.88",
-    "@aws-sdk/credential-providers": "^3.1161.0",
-    "@hono/node-server": "^2.1.5",
+    "@ai-sdk/amazon-bedrock": "^5.0.146",
+    "@ai-sdk/anthropic": "^4.0.107",
+    "@ai-sdk/mcp": "^2.0.102",
+    "@aws-sdk/credential-providers": "^3.1174.0",
+    "@hono/node-server": "^2.1.11",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@oktamax/shared": "*",
-    "ai": "^7.0.159",
-    "hono": "^4.13.14",
+    "ai": "^7.0.178",
+    "hono": "^4.13.19",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@ai-sdk/provider": "^4.0.35",
+    "@ai-sdk/provider": "^4.0.39",
     "@types/node": "^26.6.6"
   }
 }
