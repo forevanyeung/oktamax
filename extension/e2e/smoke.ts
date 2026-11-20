@@ -262,6 +262,25 @@ async function main() {
     (await info.getByRole('link', { name: /Docs/ }).getAttribute('href')) ?? '',
     /\/management\/tags\/user\/other\/listusers$/,
   );
+  // The Params table suggests the endpoint's parameters under the Key cell.
+  await prompt.fill('users');
+  await prompt.press('Escape');
+  const paramsTab = drawer.getByRole('tab', { name: /^Params/ });
+  await paramsTab.click();
+  const key = drawer.locator('.params').getByRole('combobox').first();
+  await key.fill('se');
+  const keyOption = drawer.getByRole('option', { name: /^search/ });
+  await keyOption.waitFor();
+  const [cell, list] = await Promise.all([
+    key.locator('xpath=ancestor::td').boundingBox(),
+    drawer.locator('.key-suggestions').boundingBox(),
+  ]);
+  assert.ok(cell && list && Math.abs(cell.x - list.x) < 1, 'the list lines up with its cell');
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-param-keys.png') });
+  await key.press('ArrowDown');
+  await key.press('Enter');
+  assert.equal(await prompt.inputValue(), 'users?search');
+  await paramsTab.click();
   await prompt.fill('users?limit=2');
   await prompt.press('Enter');
   await drawer.getByText('200 OK').waitFor();

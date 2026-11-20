@@ -219,6 +219,19 @@ export const consoleStyles = `
   font-family: ${MONO_FONT} !important; font-size: 12px !important;
 }
 .cell-input:focus { outline: none; background: var(--raised); }
+.key-suggestions {
+  position: fixed; z-index: 3; max-width: 560px; margin: 0; padding: 4px 0; overflow: auto;
+  list-style: none; border: 1px solid var(--border); border-radius: 0 0 6px 6px;
+  background: var(--surface); box-shadow: var(--shadow) 0 6px 18px 0;
+}
+.key-suggestion {
+  display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); gap: 10px;
+  align-items: baseline; padding: 2px 8px; font-size: 12px; cursor: pointer;
+}
+.key-suggestion.active { background: var(--raised); }
+.key-name { font: 12px/20px ${MONO_FONT}; }
+.key-type { color: var(--muted); font: 11px/20px ${MONO_FONT}; }
+.key-detail { overflow: hidden; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
 
 .body-editor { display: flex; flex-direction: column; gap: 6px; }
 .code-input {

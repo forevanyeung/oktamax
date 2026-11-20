@@ -13,7 +13,7 @@ import { setConsoleHandler } from './remote';
 import { Prompt, type PromptHandle } from './Prompt';
 import { joinUrl, send, splitUrl, type ApiRequest, type ApiResponse, type Param } from './request';
 import { ResponseView } from './ResponseView';
-import { docsUrl, endpointFor, objectPath, type Endpoint } from './suggest';
+import { docsUrl, endpointFor, objectPath, type Endpoint, type QueryParam } from './suggest';
 import { addToHistory, loadState, saveState, type ConsoleState, type HistoryEntry } from './store';
 
 type Result =
@@ -111,6 +111,123 @@ const EndpointInfo = ({ endpoint }: { endpoint: Endpoint }) => {
   );
 };
 
+/**
+ * A parameter's name in the Params table, with the endpoint's parameters
+ * suggested under it as it's typed. The console draws the list rather than a
+ * `<datalist>`, whose popup Chrome places on its own and can't be lined up.
+ */
+const KeyCell = ({
+  id,
+  value,
+  placeholder,
+  options,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  options: QueryParam[];
+  onChange: (key: string) => void;
+}) => {
+  const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const typed = value.toLowerCase();
+  const shown = open
+    ? options.filter((p) => p.n !== value && p.n.toLowerCase().startsWith(typed))
+    : [];
+
+  const accept = (param: QueryParam) => {
+    onChange(param.n);
+    setOpen(false);
+    setActive(-1);
+    // On to the value.
+    const row = input.current?.closest('tr');
+    requestAnimationFrame(() => row?.querySelectorAll('input')[1]?.focus());
+  };
+  const moveTo = (index: number) => {
+    setActive(index);
+    list.current?.children[index]?.scrollIntoView({ block: 'nearest' });
+  };
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const { key } = event;
+    if (key === 'ArrowDown') {
+      event.preventDefault();
+      if (!open) setOpen(true);
+      else if (active < shown.length - 1) moveTo(active + 1);
+    } else if (key === 'ArrowUp' && shown.length) {
+      event.preventDefault();
+      if (active > 0) moveTo(active - 1);
+    } else if ((key === 'Enter' || key === 'Tab') && !event.shiftKey && shown[active]) {
+      event.preventDefault();
+      accept(shown[active]);
+    } else if (key === 'Escape' && shown.length) {
+      setOpen(false);
+      setActive(-1);
+    }
+  };
+
+  // Fixed, so the panel's scrolling doesn't clip it: under the cell, or over it
+  // when the window is short of room below.
+  const rect = shown.length ? input.current?.closest('td')?.getBoundingClientRect() : undefined;
+  const style: React.CSSProperties | undefined = rect && {
+    left: rect.left,
+    minWidth: rect.width,
+    ...(innerHeight - rect.bottom >= 160
+      ? { top: rect.bottom - 1, maxHeight: innerHeight - rect.bottom - 8 }
+      : { bottom: innerHeight - rect.top - 1, maxHeight: rect.top - 8 }),
+  };
+
+  return (
+    <>
+      <input
+        ref={input}
+        className="cell-input"
+        role="combobox"
+        aria-expanded={shown.length > 0}
+        aria-controls={id}
+        aria-autocomplete="list"
+        spellCheck={false}
+        autoComplete="off"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+          setActive(-1);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          setOpen(false);
+          setActive(-1);
+        }}
+        onKeyDown={onKeyDown}
+      />
+      {style && (
+        <ul className="key-suggestions" id={id} role="listbox" ref={list} style={style}>
+          {shown.map((p, i) => (
+            <li
+              key={p.n}
+              role="option"
+              aria-selected={i === active}
+              className={i === active ? 'key-suggestion active' : 'key-suggestion'}
+              // Keeps the focus in the cell.
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => accept(p)}
+            >
+              <span className="key-name">{p.n}</span>
+              <span className="key-type">{p.ty}</span>
+              <span className="key-detail">{p.d}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+};
+
 const ParamsEditor = ({
   url,
   endpoint,
@@ -123,6 +240,7 @@ const ParamsEditor = ({
   const { path, params } = splitUrl(url);
   const known = endpoint?.q ?? [];
   const hintFor = (key: string) => known.find((p) => p.n === key);
+  const unused = known.filter((p) => !params.some((used) => used.key === p.n));
   const rows = [...params, { key: '', value: '' }];
   const update = (index: number, change: Partial<Param>) =>
     onChange(
@@ -158,12 +276,12 @@ const ParamsEditor = ({
             return (
               <tr key={i} title={hint?.d}>
                 <td>
-                  <input
-                    className="cell-input"
+                  <KeyCell
+                    id={`oktamax-param-keys-${i}`}
                     value={param.key}
-                    list={known.length ? 'oktamax-param-names' : undefined}
                     placeholder={i === params.length ? 'Add a parameter' : ''}
-                    onChange={(e) => update(i, { key: e.target.value })}
+                    options={unused}
+                    onChange={(key) => update(i, { key })}
                   />
                 </td>
                 <td>
@@ -190,15 +308,6 @@ const ParamsEditor = ({
           })}
         </tbody>
       </table>
-      {known.length > 0 && (
-        <datalist id="oktamax-param-names">
-          {known
-            .filter((p) => !params.some((used) => used.key === p.n))
-            .map((p) => (
-              <option key={p.n} value={p.n} label={p.d} />
-            ))}
-        </datalist>
-      )}
     </>
   );
 };
