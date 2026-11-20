@@ -110,7 +110,86 @@ export function toConsoleUrl(href: string): string {
 /** Okta checks this token on every request that changes something. */
 const xsrfToken = () => document.getElementById('_xsrfToken')?.textContent?.trim();
 
-export async function send({ method, url, body }: ApiRequest): Promise<ApiResponse> {
+/**
+ * What Okta asks for when a protected action (editing an identity provider,
+ * say) needs the admin to verify again: a 401 with
+ * `WWW-Authenticate: error="insufficient_user_authentication", max_age="60", acr_values="…"`.
+ */
+export interface StepUpChallenge {
+  maxAge?: string;
+  acrValues?: string;
+}
+
+export function stepUpChallenge(
+  status: number,
+  wwwAuthenticate: string | null,
+): StepUpChallenge | undefined {
+  if (status !== 401 || !wwwAuthenticate) return undefined;
+  const fields = Object.fromEntries(
+    [...wwwAuthenticate.matchAll(/([\w-]+)\s*=\s*"([^"]*)"/g)].map(([, k, v]) => [k, v]),
+  );
+  if (fields.error !== 'insufficient_user_authentication') return undefined;
+  return { maxAge: fields.max_age, acrValues: fields.acr_values };
+}
+
+/** The pop-up the admin console itself opens for a step-up. */
+export function stepUpUrl({ maxAge, acrValues }: StepUpChallenge, origin: string): string {
+  const url = new URL('/admin/sso/step-up', origin);
+  if (maxAge) url.searchParams.set('max_age', maxAge);
+  if (acrValues) url.searchParams.set('acr_values', acrValues);
+  return url.href;
+}
+
+/**
+ * Opens Okta's step-up pop-up and waits for it. When the admin verifies, its
+ * callback page posts `{ type: 'step-up', success: true }` to this window and
+ * closes; closing it any other way is a cancel.
+ */
+function stepUp(challenge: StepUpChallenge): Promise<boolean> {
+  const popup = window.open(stepUpUrl(challenge, location.origin));
+  if (!popup) return Promise.resolve(false); // blocked
+  return new Promise((resolve) => {
+    const finish = (verified: boolean) => {
+      removeEventListener('message', onMessage);
+      clearInterval(poll);
+      resolve(verified);
+    };
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: unknown; success?: unknown } | null;
+      if (event.origin === location.origin && data?.type === 'step-up')
+        finish(data.success === true);
+    };
+    // The message arrives just before the pop-up closes; give it a moment.
+    let closedFor = 0;
+    const poll = setInterval(() => {
+      if (popup.closed && ++closedFor > 2) finish(false);
+    }, 250);
+    addEventListener('message', onMessage);
+  });
+}
+
+export interface SendOptions {
+  /** Called when Okta asks the admin to verify before it will carry out the request. */
+  onStepUp?: () => void;
+}
+
+/**
+ * Sends a request. If Okta asks for a step-up, opens its pop-up like the admin
+ * console does and, once the admin verifies, sends the request again; if they
+ * don't, the response is Okta's original 401.
+ */
+export async function send(request: ApiRequest, options: SendOptions = {}): Promise<ApiResponse> {
+  const response = await sendOnce(request);
+  const challenge = stepUpChallenge(
+    response.status,
+    response.headers.find(([name]) => name.toLowerCase() === 'www-authenticate')?.[1] ?? null,
+  );
+  if (!challenge) return response;
+  options.onStepUp?.();
+  return (await stepUp(challenge)) ? sendOnce(request) : response;
+}
+
+async function sendOnce({ method, url, body }: ApiRequest): Promise<ApiResponse> {
   const target = resolveUrl(url, location.origin);
   const headers: Record<string, string> = { Accept: 'application/json' };
   const hasBody = method !== 'GET' && body.trim() !== '';
