@@ -143,7 +143,7 @@ export function stepUpUrl({ maxAge, acrValues }: StepUpChallenge, origin: string
 /**
  * Opens Okta's step-up pop-up and waits for it. When the admin verifies, its
  * callback page posts `{ type: 'step-up', success: true }` to this window and
- * closes; closing it any other way is a cancel.
+ * leaves closing the pop-up to us; closing it before then is a cancel.
  */
 function stepUp(challenge: StepUpChallenge): Promise<boolean> {
   const popup = window.open(stepUpUrl(challenge, location.origin));
@@ -152,6 +152,7 @@ function stepUp(challenge: StepUpChallenge): Promise<boolean> {
     const finish = (verified: boolean) => {
       removeEventListener('message', onMessage);
       clearInterval(poll);
+      popup.close();
       resolve(verified);
     };
     const onMessage = (event: MessageEvent) => {
@@ -159,11 +160,7 @@ function stepUp(challenge: StepUpChallenge): Promise<boolean> {
       if (event.origin === location.origin && data?.type === 'step-up')
         finish(data.success === true);
     };
-    // The message arrives just before the pop-up closes; give it a moment.
-    let closedFor = 0;
-    const poll = setInterval(() => {
-      if (popup.closed && ++closedFor > 2) finish(false);
-    }, 250);
+    const poll = setInterval(() => popup.closed && finish(false), 250);
     addEventListener('message', onMessage);
   });
 }
