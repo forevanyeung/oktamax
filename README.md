@@ -675,17 +675,56 @@ checks four things: each admin's calls carry only their own token, only read too
 write tool call is refused, and only GETs reach Okta. It isn't part of `npm test`, because the
 first run downloads Python and the package.
 
-### Releasing to the Chrome Web Store
+### Releasing
 
-Bump `version` in `extension/package.json`, merge, then push a matching tag:
+The extension and the chat server are released separately, each with its own
+[semantic version](https://semver.org) and tag (`extension-v1.2.0`, `server-v1.3.1`). Run the
+**Release** workflow (`.github/workflows/release.yml`) from main, pick the component, and leave the
+bump on `auto`, or force `patch`, `minor` or `major`. It:
 
-```sh
-git tag v0.2.0 && git push origin v0.2.0
-```
+1. Works out the next version from the pull requests merged since that component's last release
+   that touched its code (or `shared/`): **major** for a breaking change, **minor** for a `feat/`
+   branch, **patch** otherwise. A change is breaking when its description says `BREAKING CHANGE`,
+   its branch or title has a `!` (`feat!/...`), or it raises the other side's minimum in
+   `shared/src/version.ts`. The very first release keeps the version already in `package.json`.
+2. Commits the new version to `package.json`, tags that commit, and pushes both to main.
+3. Creates a GitHub **pre-release** whose notes list those pull requests, grouped into breaking
+   changes, features, fixes and the rest, and which versions of the other side it works with.
+4. For the extension: builds it, attaches the zip to the release, uploads it to the Chrome Web
+   Store and submits it for review (`release-extension.yml`).
 
-`.github/workflows/release-extension.yml` builds the extension, uploads the zip to the store and
-submits it for review; it's published when approved. Running the workflow by hand instead can
-stage it on approval (publish later from the dashboard) or only upload the draft.
+A release becomes a **full release** once it's out. The **Promote release** workflow
+(`promote-release.yml`) checks the Chrome Web Store every four hours and promotes the extension
+release whose version the store has published. Promote a server release once it's deployed: run
+the workflow with its tag, or untick "pre-release" on GitHub.
+
+To try the version and notes locally: `node scripts/release.mjs server --notes notes.md` (add
+`--write` to also set the version in `package.json`).
+
+#### Keeping the extension and server compatible
+
+Chrome updates the extension on its own schedule and each organization deploys the server on
+theirs, so either can be ahead. Each side reports its version: the extension in an
+`X-Oktamax-Extension-Version` header, the server in `GET /api/config`. Each holds the oldest
+version of the other it works with, in `shared/src/version.ts`:
+
+- `MIN_SERVER_VERSION`: below it, the extension doesn't chat with the server and tells the admin
+  the server needs updating.
+- `MIN_EXTENSION_VERSION`: below it, the server answers the extension's `/api/chats` requests with
+  `426 Upgrade Required`, and the extension tells the admin to update Okta Max.
+
+When a change breaks the contract between them, raise the minimum in the same pull request, and
+release the side the others depend on first: the server, if the extension needs something new from
+it. Versions from before they were reported count as 0.1.0, so raising either minimum past 0.1.0
+also cuts off peers that don't report one.
+
+#### Releasing by hand
+
+Pushing a tag `extension-v<version>` that matches `extension/package.json` also runs
+`release-extension.yml`. Running that workflow by hand can stage the extension on approval
+(publish later from the dashboard) or only upload the draft.
+
+#### Chrome Web Store credentials
 
 The workflow has no stored credentials. GitHub's OIDC token is exchanged through Workload Identity
 Federation for a 10-minute access token of a service account, which the store accepts because the
@@ -718,7 +757,9 @@ Then:
    **Account**, add `chrome-web-store@<project>.iam.gserviceaccount.com` as the service account
    (a publisher can have only one). Note the publisher ID from **Publisher > Settings**.
 2. In the repository settings, create the `chrome-web-store` environment, optionally with
-   required reviewers and a `v*` tag rule, and give it these variables:
+   deployment rules allowing the `main` branch (the Release and Promote release workflows run
+   from it) and `extension-v*` tags, and give it these variables. Required reviewers would also
+   hold each scheduled store check in Promote release for approval.
    - `GCP_WORKLOAD_IDENTITY_PROVIDER`:
      `projects/<project number>/locations/global/workloadIdentityPools/github/providers/oktamax`
    - `GCP_SERVICE_ACCOUNT`: `chrome-web-store@<project>.iam.gserviceaccount.com`

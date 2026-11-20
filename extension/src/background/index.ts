@@ -11,6 +11,12 @@
  *   org of the admin console it's on, with no sign-in.
  */
 import type { OrgConfig, ServerConfig } from '@oktamax/shared';
+import {
+  EXTENSION_VERSION_HEADER,
+  isAtLeast,
+  MIN_SERVER_VERSION,
+  UNVERSIONED,
+} from '@oktamax/shared/version';
 
 import { onDeviceModel } from '../onDeviceModel';
 import { loadSettings, ON_DEVICE_CHAT_URL } from '../settings';
@@ -29,8 +35,12 @@ import { prepareOktaMcp } from './oktaMcp';
 
 const configCache = new Map<string, Promise<ServerConfig>>();
 
+const EXTENSION_VERSION = chrome.runtime.getManifest().version;
+
 async function fetchConfig(serverUrl: string): Promise<ServerConfig> {
-  const res = await fetch(new URL('/api/config', serverUrl));
+  const res = await fetch(new URL('/api/config', serverUrl), {
+    headers: { [EXTENSION_VERSION_HEADER]: EXTENSION_VERSION },
+  });
   if (!res.ok) throw new Error(`Chat server returned ${res.status}`);
   return (await res.json()) as ServerConfig;
 }
@@ -45,6 +55,24 @@ async function serverConfig(): Promise<{ serverUrl: string; config: ServerConfig
     config.catch(() => configCache.delete(chatServerUrl)); // retry next time
   }
   return { serverUrl: chatServerUrl, config: await config };
+}
+
+/** Whether this extension and the chat server work together, and if not, which one to update. */
+function incompatibility(serverUrl: string, config: ServerConfig): AuthStatus | undefined {
+  const serverVersion = config.version ?? UNVERSIONED;
+  const versions = { serverUrl, extensionVersion: EXTENSION_VERSION, serverVersion };
+  if (!isAtLeast(config.version, MIN_SERVER_VERSION)) {
+    return { state: 'incompatible', update: 'server', ...versions, minVersion: MIN_SERVER_VERSION };
+  }
+  if (config.minExtensionVersion && !isAtLeast(EXTENSION_VERSION, config.minExtensionVersion)) {
+    return {
+      state: 'incompatible',
+      update: 'extension',
+      ...versions,
+      minVersion: config.minExtensionVersion,
+    };
+  }
+  return undefined;
 }
 
 /** The admin console tab a message came from, and its org: acme-admin.okta.com is acme.okta.com's. */
@@ -88,6 +116,11 @@ async function authStatus(
     return { state: 'unreachable', serverUrl: chatServerUrl, error: String(error) };
   }
   if (!server) return { state: 'off' };
+  const incompatible = incompatibility(server.serverUrl, server.config);
+  if (incompatible) {
+    configCache.delete(server.serverUrl); // check again on "Try again", after an update
+    return incompatible;
+  }
   // Not one of the server's orgs: no chat on this admin console.
   const org = orgFor(server.config, sender);
   if (!org) return { state: 'off' };
@@ -137,6 +170,9 @@ async function forward(
   if (!server || new URL(request.url).origin !== new URL(server.serverUrl).origin) {
     throw new Error('Request is not for the configured chat server');
   }
+  if (incompatibility(server.serverUrl, server.config)) {
+    return Response.json({ error: 'incompatible' }, { status: 426 });
+  }
   const org = orgFor(server.config, sender);
   if (!org) throw new Error('The chat server does not serve this org');
   let token: string;
@@ -152,11 +188,15 @@ async function forward(
       ...request.headers,
       Authorization: `Bearer ${token}`,
       'X-Okta-Org': new URL(org.oktaOrgUrl).host,
+      [EXTENSION_VERSION_HEADER]: EXTENSION_VERSION,
     },
     body: request.body,
     signal,
   });
   if (res.status === 401) await clearAccessToken(org.oktaOrgUrl);
+  // The server was updated past this extension since its config was read: read it again, so the
+  // chat shows that the extension needs updating.
+  if (res.status === 426) configCache.delete(server.serverUrl);
   return res;
 }
 

@@ -1,0 +1,92 @@
+name: Release
+
+# Releases the extension or the chat server, each with its own version (see shared/src/version.ts
+# for how they stay compatible). Bumps the version in its package.json, commits that to main, tags
+# the commit `<component>-v<version>`, and creates a GitHub pre-release whose notes list the pull
+# requests since its last release. The extension then goes to the Chrome Web Store; the release
+# becomes a full release once the store publishes it (promote-release.yml). A server release is
+# promoted by hand when it's deployed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: What to release
+        type: choice
+        options: [extension, server]
+      bump:
+        description: 'Version bump (auto: major for breaking changes, minor for feat/ branches, else patch)'
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases are cut from main, not $GITHUB_REF_NAME"
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags and history, for the version and the notes
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - id: next
+        name: Work out the version and notes
+        env:
+          COMPONENT: ${{ inputs.component }}
+          BUMP: ${{ inputs.bump }}
+        run: |
+          node scripts/release.mjs "$COMPONENT" "$BUMP" --write --notes "$RUNNER_TEMP/notes.md" | tee -a "$GITHUB_OUTPUT"
+          { echo "## $(grep '^title=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)"; echo; cat "$RUNNER_TEMP/notes.md"; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit and tag
+        env:
+          COMPONENT: ${{ inputs.component }}
+          VERSION: ${{ steps.next.outputs.version }}
+          TAG: ${{ steps.next.outputs.tag }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # The first release keeps the version already in package.json: nothing to commit.
+          if ! git diff --quiet; then
+            git commit -am "Release $COMPONENT $VERSION"
+          fi
+          git tag -a "$TAG" -m "Release $COMPONENT $VERSION"
+          git push --atomic origin HEAD:main "$TAG"
+
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.next.outputs.tag }}
+          TITLE: ${{ steps.next.outputs.title }}
+        run: |
+          gh release create "$TAG" --verify-tag --prerelease --title "$TITLE" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+  # Tags pushed with the workflow's token don't start other workflows, so call the store release.
+  extension:
+    needs: release
+    if: inputs.component == 'extension'
+    uses: ./.github/workflows/release-extension.yml
+    with:
+      ref: ${{ needs.release.outputs.tag }}
+    secrets: inherit
