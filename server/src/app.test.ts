@@ -15,7 +15,10 @@ import type {
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vite-plus/test';
 
-import { createApp } from './app';
+import type { ServerConfig } from '@oktamax/shared';
+import { EXTENSION_VERSION_HEADER, MIN_EXTENSION_VERSION } from '@oktamax/shared/version';
+
+import { createApp, SERVER_VERSION } from './app';
 import { MemoryChatStore } from './chat/store';
 import { ToolHooks } from './mcp/hooks';
 import type { TelemetryEvent } from './telemetry';
@@ -597,5 +600,36 @@ describe('chat', () => {
     const second = await send('Thanks');
     expect(second.status).toBe(200);
     await second.text();
+  });
+});
+
+describe('version compatibility', () => {
+  it('reports its version and the oldest extension it works with', async () => {
+    const config = (await (await fetch(`${base}/api/config`)).json()) as ServerConfig;
+    expect(config.version).toBe(SERVER_VERSION);
+    expect(config.minExtensionVersion).toBe(MIN_EXTENSION_VERSION);
+  });
+
+  it('tells an extension older than the minimum to update', async () => {
+    const res = await fetch(`${base}/api/chats/too-old`, {
+      headers: { ...auth('token-ada'), [EXTENSION_VERSION_HEADER]: '0.0.1' },
+    });
+    expect(res.status).toBe(426);
+    expect(await res.json()).toEqual({
+      error: 'extension_outdated',
+      serverVersion: SERVER_VERSION,
+      minExtensionVersion: MIN_EXTENSION_VERSION,
+    });
+  });
+
+  it('serves extensions at the minimum, and ones from before versions were sent', async () => {
+    const current = await fetch(`${base}/api/chats/current`, {
+      headers: { ...auth('token-ada'), [EXTENSION_VERSION_HEADER]: MIN_EXTENSION_VERSION },
+    });
+    expect(current.status).toBe(404);
+    const unversioned = await fetch(`${base}/api/chats/unversioned`, {
+      headers: auth('token-ada'),
+    });
+    expect(unversioned.status).toBe(404);
   });
 });

@@ -1,13 +1,24 @@
 name: Release extension
 
-# Builds the extension and uploads it to the Chrome Web Store. Pushing a tag `v<version>` (matching
-# extension/package.json) submits it for review; running it by hand can stage it instead, or only
-# upload the draft. Auth is keyless: GitHub's OIDC token is exchanged through Workload Identity
+# Builds the extension and uploads it to the Chrome Web Store. The Release workflow (release.yml)
+# calls it for each extension release; pushing a tag `extension-v<version>` (matching
+# extension/package.json) by hand does the same. Either submits it for review and attaches the zip
+# to the GitHub release; running it by hand can stage it instead, or only upload the draft. Once
+# the store publishes the version, promote-release.yml turns its pre-release into a full one. Auth is keyless: GitHub's OIDC token is exchanged through Workload Identity
 # Federation for a short-lived access token of the service account added to the publisher.
 
 on:
   push:
-    tags: ['v*']
+    tags: ['extension-v*']
+  workflow_call:
+    inputs:
+      ref:
+        description: The release tag to build
+        type: string
+        required: true
+      publish:
+        type: string
+        default: submit for review, publish on approval
   workflow_dispatch:
     inputs:
       publish:
@@ -31,8 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -40,11 +54,14 @@ jobs:
 
       - id: version
         name: Check the version
+        env:
+          TAG: ${{ inputs.ref || (github.ref_type == 'tag' && github.ref_name) || '' }}
         run: |
           version=$(node -p "require('./extension/package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME doesn't match extension/package.json ($version)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ -n "$TAG" && "$TAG" != "extension-v$version" ]]; then
+            echo "::error::Tag $TAG doesn't match extension/package.json ($version)"
             exit 1
           fi
 
@@ -59,6 +76,28 @@ jobs:
           name: extension
           path: oktamax-${{ steps.version.outputs.version }}.zip
           if-no-files-found: error
+
+  # The zip goes on the GitHub release too, for installs outside the store.
+  attach:
+    needs: build
+    if: needs.build.outputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" oktamax-*.zip --clobber -R "$GITHUB_REPOSITORY"
+          else
+            echo "No GitHub release for $TAG: nothing to attach to."
+          fi
 
   publish:
     needs: build

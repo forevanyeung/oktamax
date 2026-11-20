@@ -3,6 +3,14 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 
 import type { ServerConfig } from '@oktamax/shared';
+import {
+  EXTENSION_VERSION_HEADER,
+  isAtLeast,
+  MIN_EXTENSION_VERSION,
+  type ExtensionOutdated,
+} from '@oktamax/shared/version';
+
+import pkg from '../package.json' with { type: 'json' };
 
 import { requireAuth } from './auth';
 import { createChatRoutes, type ChatDeps } from './chat/routes';
@@ -15,6 +23,8 @@ import type { OktaMcpProcessPool } from './mcp/processPool';
 const OPEN_PATHS = /^\/(mcp|oauth|\.well-known)\//;
 
 const requestLog = logger();
+
+export const SERVER_VERSION = pkg.version;
 
 export const createApp = (
   deps: ChatDeps & {
@@ -38,8 +48,23 @@ export const createApp = (
     .get('/api/config', (c) =>
       c.json<ServerConfig>({
         orgs: config.orgs.map((org) => ({ oktaOrgUrl: org.url, oktaClientId: org.clientId })),
+        version: SERVER_VERSION,
+        minExtensionVersion: MIN_EXTENSION_VERSION,
       }),
     )
+    // An extension too old for this server is told so, rather than failing in ways it can't
+    // explain. `/api/config` stays open: it's how an extension learns it's out of date.
+    .use('/api/chats/*', async (c, next) => {
+      if (isAtLeast(c.req.header(EXTENSION_VERSION_HEADER), MIN_EXTENSION_VERSION)) return next();
+      return c.json<ExtensionOutdated>(
+        {
+          error: 'extension_outdated',
+          serverVersion: SERVER_VERSION,
+          minExtensionVersion: MIN_EXTENSION_VERSION,
+        },
+        426,
+      );
+    })
     .route('/api/chats', createChatRoutes(deps))
     // One MCP server per org, each with its own sign-in.
     .post(

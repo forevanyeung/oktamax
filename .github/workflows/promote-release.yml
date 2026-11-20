@@ -1,0 +1,88 @@
+name: Promote release
+
+# Releases start as GitHub pre-releases (release.yml) and become full releases once they're out:
+# - Extension: when the Chrome Web Store publishes the version, after review. Checked every few
+#   hours; earlier pre-releases the store skipped stay pre-releases.
+# - Server: by hand, once it's deployed: run this with its tag (or untick "pre-release" on GitHub).
+
+on:
+  schedule:
+    - cron: '23 */4 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release to promote, like server-v1.2.0 (empty to check the Chrome Web Store)
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: promote-release
+  cancel-in-progress: false
+
+jobs:
+  by-hand:
+    if: inputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Promote
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isPrerelease -q .isPrerelease)" == true ]] \
+            || { echo "$TAG isn't a pre-release: nothing to do."; exit 0; }
+          # The extension is what most people install, so its releases are the repo's "latest".
+          latest=false; [[ "$TAG" == extension-v* ]] && latest=true
+          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --prerelease=false --latest=$latest
+          echo "Promoted $TAG to a full release." >> "$GITHUB_STEP_SUMMARY"
+
+  chrome-web-store:
+    if: inputs.tag == ''
+    runs-on: ubuntu-latest
+    # Holds the store's variables (see release-extension.yml). Required reviewers on this
+    # environment would hold every scheduled check for approval.
+    environment: chrome-web-store
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          access_token_lifetime: 300s
+          create_credentials_file: false
+
+      - name: Promote the published version
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+          GH_TOKEN: ${{ github.token }}
+          ITEM: https://chromewebstore.googleapis.com/v2/publishers/${{ vars.CWS_PUBLISHER_ID }}/items/${{ vars.CWS_EXTENSION_ID }}
+        run: |
+          status=$(curl -sS --fail-with-body -H "Authorization: Bearer $TOKEN" "$ITEM:fetchStatus")
+          # The highest version live on any channel (a staged rollout can have more than one).
+          version=$(jq -r '[.publishedItemRevisionStatus.distributionChannels[]?.crxVersion // empty]
+            | sort_by(split(".") | map(tonumber)) | last // empty' <<<"$status")
+          if [[ -z "$version" ]]; then
+            echo "Nothing published in the store yet."
+            echo "$status"
+            exit 0
+          fi
+          echo "Published in the Chrome Web Store: $version"
+          tag="extension-v$version"
+          if ! prerelease=$(gh release view "$tag" -R "$GITHUB_REPOSITORY" --json isPrerelease -q .isPrerelease 2>/dev/null); then
+            echo "No GitHub release for $tag."
+            exit 0
+          fi
+          if [[ "$prerelease" != true ]]; then
+            echo "$tag is already a full release."
+            exit 0
+          fi
+          gh release edit "$tag" -R "$GITHUB_REPOSITORY" --prerelease=false --latest
+          echo "Promoted $tag: the Chrome Web Store published it." >> "$GITHUB_STEP_SUMMARY"
