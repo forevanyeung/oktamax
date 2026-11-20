@@ -13,7 +13,7 @@ import { setConsoleHandler } from './remote';
 import { Prompt, type PromptHandle } from './Prompt';
 import { joinUrl, send, splitUrl, type ApiRequest, type ApiResponse, type Param } from './request';
 import { ResponseView } from './ResponseView';
-import { objectPath } from './suggest';
+import { docsUrl, endpointFor, objectPath, type Endpoint, type QueryParam } from './suggest';
 import { addToHistory, loadState, saveState, type ConsoleState, type HistoryEntry } from './store';
 
 type Result =
@@ -78,10 +78,194 @@ const SLIDE = { duration: 320, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' };
 const DOUBLE_PRESS_MS = 300;
 /** How far the tab has to move before a press counts as a drag, not a click. */
 const DRAG_THRESHOLD = 4;
+/** How long the pointer rests on a parameter before its description shows: half of Chrome's own tooltip delay on macOS. */
+const HINT_DELAY_MS = 500;
+/**
+ * The hint touches its row (overlapping the row's border, so no gap is left
+ * even at fractional pixels); this is only slack for the pointer's path.
+ */
+const HINT_GRACE_MS = 150;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ParamsEditor = ({ url, onChange }: { url: string; onChange: (url: string) => void }) => {
+/**
+ * The endpoint the prompt's request goes to, beside the Params and Body tabs:
+ * the scope it needs and its docs. The tooltip says what it does.
+ */
+const EndpointInfo = ({ endpoint }: { endpoint: Endpoint }) => {
+  const docs = docsUrl(endpoint);
+  const [scope, ...more] = endpoint.sc ?? [];
+  const title = [
+    `${endpoint.m} ${endpoint.p}`,
+    endpoint.s,
+    endpoint.sc?.length && `Scopes: ${endpoint.sc.join(', ')}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return (
+    <div className="endpoint-info" title={title}>
+      {scope && (
+        <span className="endpoint-scope">
+          {scope}
+          {more.length > 0 && ` +${more.length}`}
+        </span>
+      )}
+      {docs && (
+        <a className="endpoint-docs" href={docs} target="_blank" rel="noreferrer">
+          Docs ↗
+        </a>
+      )}
+    </div>
+  );
+};
+
+/**
+ * A parameter's name in the Params table, with the endpoint's parameters
+ * suggested under it as it's typed. The console draws the list rather than a
+ * `<datalist>`, whose popup Chrome places on its own and can't be lined up.
+ */
+const KeyCell = ({
+  id,
+  value,
+  placeholder,
+  options,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  options: QueryParam[];
+  onChange: (key: string) => void;
+}) => {
+  const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const typed = value.toLowerCase();
+  const shown = open
+    ? options.filter((p) => p.n !== value && p.n.toLowerCase().startsWith(typed))
+    : [];
+
+  const accept = (param: QueryParam) => {
+    onChange(param.n);
+    setOpen(false);
+    setActive(-1);
+    // On to the value.
+    const row = input.current?.closest('tr');
+    requestAnimationFrame(() => row?.querySelectorAll('input')[1]?.focus());
+  };
+  const moveTo = (index: number) => {
+    setActive(index);
+    list.current?.children[index]?.scrollIntoView({ block: 'nearest' });
+  };
+  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const { key } = event;
+    if (key === 'ArrowDown') {
+      event.preventDefault();
+      if (!open) setOpen(true);
+      else if (active < shown.length - 1) moveTo(active + 1);
+    } else if (key === 'ArrowUp' && shown.length) {
+      event.preventDefault();
+      if (active > 0) moveTo(active - 1);
+    } else if ((key === 'Enter' || key === 'Tab') && !event.shiftKey && shown[active]) {
+      event.preventDefault();
+      accept(shown[active]);
+    } else if (key === 'Escape' && shown.length) {
+      setOpen(false);
+      setActive(-1);
+    }
+  };
+
+  // Fixed, so the panel's scrolling doesn't clip it: under the cell, or over it
+  // when the window is short of room below.
+  const rect = shown.length ? input.current?.closest('td')?.getBoundingClientRect() : undefined;
+  const style: React.CSSProperties | undefined = rect && {
+    left: rect.left,
+    minWidth: rect.width,
+    ...(innerHeight - rect.bottom >= 160
+      ? { top: rect.bottom - 1, maxHeight: innerHeight - rect.bottom - 8 }
+      : { bottom: innerHeight - rect.top - 1, maxHeight: rect.top - 8 }),
+  };
+
+  return (
+    <>
+      <input
+        ref={input}
+        className="cell-input"
+        role="combobox"
+        aria-expanded={shown.length > 0}
+        aria-controls={id}
+        aria-autocomplete="list"
+        spellCheck={false}
+        autoComplete="off"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+          setActive(-1);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          setOpen(false);
+          setActive(-1);
+        }}
+        onKeyDown={onKeyDown}
+      />
+      {style && (
+        <ul className="key-suggestions" id={id} role="listbox" ref={list} style={style}>
+          {shown.map((p, i) => (
+            <li
+              key={p.n}
+              role="option"
+              aria-selected={i === active}
+              className={i === active ? 'key-suggestion active' : 'key-suggestion'}
+              // Keeps the focus in the cell.
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => accept(p)}
+            >
+              <span className="key-name">{p.n}</span>
+              <span className="key-type">{p.ty}</span>
+              <span className="key-detail">{p.d}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+};
+
+const ParamsEditor = ({
+  url,
+  endpoint,
+  onChange,
+}: {
+  url: string;
+  endpoint?: Endpoint;
+  onChange: (url: string) => void;
+}) => {
   const { path, params } = splitUrl(url);
+  const known = endpoint?.q ?? [];
+  const hintFor = (key: string) => known.find((p) => p.n === key);
+  const unused = known.filter((p) => !params.some((used) => used.key === p.n));
+
+  // A parameter's description, shown under its row once the pointer rests on it,
+  // and kept while the pointer is on the row or the hint itself.
+  const [hover, setHover] = useState<{ index: number; rect: DOMRect }>();
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  const hideHint = () => {
+    clearTimeout(hoverTimer.current);
+    setHover(undefined);
+  };
+  const keepHint = () => clearTimeout(hoverTimer.current);
+  const leaveHint = () => {
+    clearTimeout(hoverTimer.current);
+    // Shown: hides unless the pointer gets to the hint (or back to the row) in time.
+    // Pending: never shows.
+    if (hover) hoverTimer.current = setTimeout(() => setHover(undefined), HINT_GRACE_MS);
+  };
+  const hovered = hover && hintFor(params[hover.index]?.key ?? '');
   const rows = [...params, { key: '', value: '' }];
   const update = (index: number, change: Partial<Param>) =>
     onChange(
@@ -101,44 +285,87 @@ const ParamsEditor = ({ url, onChange }: { url: string; onChange: (url: string) 
     );
 
   return (
-    <table className="grid params">
-      <thead>
-        <tr>
-          <th>Key</th>
-          <th>Value</th>
-          <th aria-label="Remove" />
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((param, i) => (
-          <tr key={i}>
-            <td>
-              <input
-                className="cell-input"
-                value={param.key}
-                placeholder={i === params.length ? 'Add a parameter' : ''}
-                onChange={(e) => update(i, { key: e.target.value })}
-              />
-            </td>
-            <td>
-              <input
-                className="cell-input"
-                value={param.value}
-                placeholder={i === params.length ? 'value' : ''}
-                onChange={(e) => update(i, { value: e.target.value })}
-              />
-            </td>
-            <td className="remove">
-              {i < params.length && (
-                <button type="button" className="icon" title="Remove" onClick={() => remove(i)}>
-                  ×
-                </button>
-              )}
-            </td>
+    <>
+      <table className="grid params">
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Value</th>
+            <th aria-label="Remove" />
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((param, i) => {
+            const hint = hintFor(param.key);
+            const example = hint?.x?.[0];
+            return (
+              <tr
+                key={i}
+                onMouseEnter={(e) => {
+                  if (hover?.index === i) return keepHint();
+                  hideHint();
+                  if (!hint?.d) return;
+                  const row = e.currentTarget;
+                  hoverTimer.current = setTimeout(
+                    () => setHover({ index: i, rect: row.getBoundingClientRect() }),
+                    HINT_DELAY_MS,
+                  );
+                }}
+                onMouseLeave={leaveHint}
+                onMouseDown={hideHint}
+                onKeyDown={hideHint}
+              >
+                <td>
+                  <KeyCell
+                    id={`oktamax-param-keys-${i}`}
+                    value={param.key}
+                    placeholder={i === params.length ? 'Add a parameter' : ''}
+                    options={unused}
+                    onChange={(key) => update(i, { key })}
+                  />
+                </td>
+                <td>
+                  <input
+                    className="cell-input"
+                    value={param.value}
+                    placeholder={
+                      example
+                        ? `e.g. ${example}`
+                        : (hint?.ty ?? (i === params.length ? 'value' : ''))
+                    }
+                    onChange={(e) => update(i, { value: e.target.value })}
+                  />
+                </td>
+                <td className="remove">
+                  {i < params.length && (
+                    <button type="button" className="icon" title="Remove" onClick={() => remove(i)}>
+                      ×
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {hover && hovered?.d && (
+        <div
+          className="param-hint"
+          role="tooltip"
+          onMouseEnter={keepHint}
+          onMouseLeave={leaveHint}
+          style={
+            innerHeight - hover.rect.bottom >= 80
+              ? { left: hover.rect.left, top: hover.rect.bottom - 1 }
+              : { left: hover.rect.left, bottom: innerHeight - hover.rect.top - 1 }
+          }
+        >
+          <code>{hovered.n}</code>
+          {hovered.ty && <span className="param-hint-type">{hovered.ty}</span>}
+          <span>{hovered.d}</span>
+        </div>
+      )}
+    </>
   );
 };
 
@@ -530,6 +757,7 @@ export const ApiConsole = () => {
   }
 
   const paramCount = splitUrl(draft.url).params.length;
+  const endpoint = draft.url.trim() ? endpointFor(draft.url, draft.method) : undefined;
   const sending = result.status === 'sending';
 
   return (
@@ -593,24 +821,27 @@ export const ApiConsole = () => {
               </button>
             </div>
           </div>
-          <div className="request-tabs" role="tablist">
-            {(
-              [
-                ['params', `Params${paramCount ? ` (${paramCount})` : ''}`],
-                ['body', `Body${draft.body.trim() ? ' •' : ''}`],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={panel === id}
-                className={panel === id ? 'tab active' : 'tab'}
-                onClick={() => setPanel(panel === id ? undefined : id)}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="request-tabs">
+            <div className="tabs" role="tablist">
+              {(
+                [
+                  ['params', `Params${paramCount ? ` (${paramCount})` : ''}`],
+                  ['body', `Body${draft.body.trim() ? ' •' : ''}`],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={panel === id}
+                  className={panel === id ? 'tab active' : 'tab'}
+                  onClick={() => setPanel(panel === id ? undefined : id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {endpoint && <EndpointInfo endpoint={endpoint} />}
             <div className="spacer" />
             {Object.entries(context).map(([name, value]) => {
               const path = objectPath(name, context);
@@ -632,7 +863,11 @@ export const ApiConsole = () => {
           {panel && (
             <div className="request-panel">
               {panel === 'params' ? (
-                <ParamsEditor url={draft.url} onChange={(url) => setDraft({ url })} />
+                <ParamsEditor
+                  url={draft.url}
+                  endpoint={endpoint}
+                  onChange={(url) => setDraft({ url })}
+                />
               ) : (
                 <BodyEditor
                   request={draft}

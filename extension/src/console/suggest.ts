@@ -5,7 +5,18 @@
  */
 import { fillTemplate, type PageContext } from './context';
 import data from './endpoints.json';
-import { splitUrl, type Method } from './request';
+import { escapeValue, splitUrl, type Method } from './request';
+
+export interface QueryParam {
+  /** Name. */
+  n: string;
+  /** Type, e.g. `string` or `string[]`. */
+  ty?: string;
+  /** Description: its first sentence or two, as plain text. */
+  d?: string;
+  /** Example values. */
+  x?: string[];
+}
 
 export interface Endpoint {
   m: Method;
@@ -15,8 +26,12 @@ export interface Endpoint {
   s: string;
   /** Tag (API area). */
   t: string;
+  /** Operation ID, for the docs link. */
+  id?: string;
+  /** OAuth scopes it needs. */
+  sc?: string[];
   /** Query parameters. */
-  q?: string[];
+  q?: QueryParam[];
 }
 
 export const ENDPOINTS = data.endpoints as Endpoint[];
@@ -26,10 +41,24 @@ export interface Suggestion {
   /** The prompt's URL once this is picked. */
   url: string;
   method?: Method;
-  /** Path template or parameter name, as shown. */
+  /** What it completes: an endpoint, a query parameter's name, or its value. */
+  kind: 'endpoint' | 'param' | 'value';
+  /** Path template, parameter name or value, as shown. */
   label: string;
   detail: string;
+  /** A parameter's type. */
+  type?: string;
+  /** A parameter's first example, shown as a hint. */
+  example?: string;
+  /** The endpoint's reference page. */
+  docs?: string;
 }
+
+const DOCS = 'https://developer.okta.com/docs/api/openapi/okta-management/management/tags';
+
+/** The endpoint's page in Okta's API reference. */
+export const docsUrl = ({ t, id }: Endpoint) =>
+  t && id ? `${DOCS}/${t.toLowerCase()}/other/${id.toLowerCase()}` : undefined;
 
 const LIMIT = 50;
 const METHOD_ORDER: Method[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
@@ -74,9 +103,33 @@ const byRelevance = (preferred: Method) => (a: Endpoint, b: Endpoint) =>
 const toSuggestion = (endpoint: Endpoint, url: string): Suggestion => ({
   url,
   method: endpoint.m,
+  kind: 'endpoint',
   label: endpoint.p,
   detail: endpoint.s,
+  docs: docsUrl(endpoint),
 });
+
+/**
+ * The endpoint a console URL is a request to, for `method`: its path matches
+ * segment for segment, and literal segments win over parameters, so
+ * `/users/me` is `/users/me` rather than `/users/{userId}`.
+ */
+export function endpointFor(url: string, method: Method, endpoints = ENDPOINTS) {
+  const typed = segmentsOf(absolute(splitUrl(url.trim()).path));
+  const literals = (template: string[]) => template.filter((s) => !isParam(s)).length;
+  return endpoints
+    .filter((e) => e.m === method)
+    .map((e) => ({ e, template: segmentsOf(e.p) }))
+    .filter(
+      ({ template }) =>
+        template.length === typed.length &&
+        template.every((segment, i) => {
+          const value = typed[i] ?? '';
+          return isParam(segment) ? value !== '' : segment.toLowerCase() === value.toLowerCase();
+        }),
+    )
+    .sort((a, b) => literals(b.template) - literals(a.template))[0]?.e;
+}
 
 /** Endpoints for the page's objects: GETs whose path parameters the page fills. */
 export function pageSuggestions(context: PageContext, endpoints = ENDPOINTS): Suggestion[] {
@@ -106,7 +159,10 @@ function search(query: string, preferred: Method, context: PageContext, endpoint
     .map((e) => toSuggestion(e, fillTemplate(e.p, context)));
 }
 
-/** Query parameter names for the endpoint at `path`, after `?`. */
+/**
+ * After `?`: the endpoint's query parameters, with their types, descriptions
+ * and an example. After `name=`: that parameter's examples.
+ */
 function paramSuggestions(url: string, method: Method, endpoints: Endpoint[]): Suggestion[] {
   const q = url.indexOf('?');
   const typed = segmentsOf(absolute(url.slice(0, q)));
@@ -115,16 +171,35 @@ function paramSuggestions(url: string, method: Method, endpoints: Endpoint[]): S
     return template.length === typed.length && leadsTo(typed, template);
   });
   const endpoint = matching.find((e) => e.m === method) ?? matching[0];
+  if (!endpoint?.q) return [];
   const fragment = url.slice(url.lastIndexOf('&') + 1 || q + 1);
-  if (!endpoint?.q || fragment.includes('=')) return [];
-  const used = new Set(splitUrl(url).params.map((p) => p.key));
   const prefix = url.slice(0, url.length - fragment.length);
+  const eq = fragment.indexOf('=');
+
+  if (eq >= 0) {
+    const name = fragment.slice(0, eq);
+    const value = fragment.slice(eq + 1);
+    const param = endpoint.q.find((p) => p.n === name);
+    return (param?.x ?? [])
+      .filter((x) => x !== value && x.toLowerCase().startsWith(value.toLowerCase()))
+      .map((x) => ({
+        url: `${prefix}${name}=${escapeValue(x)}`,
+        kind: 'value' as const,
+        label: x,
+        detail: `Example ${name}`,
+      }));
+  }
+
+  const used = new Set(splitUrl(url).params.map((p) => p.key));
   return endpoint.q
-    .filter((name) => !used.has(name) && name.toLowerCase().startsWith(fragment.toLowerCase()))
-    .map((name) => ({
-      url: `${prefix}${name}=`,
-      label: name,
-      detail: `Query parameter of ${endpoint.m} ${endpoint.p}`,
+    .filter((p) => !used.has(p.n) && p.n.toLowerCase().startsWith(fragment.toLowerCase()))
+    .map((p) => ({
+      url: `${prefix}${p.n}=`,
+      kind: 'param' as const,
+      label: p.n,
+      detail: p.d ?? `Query parameter of ${endpoint.m} ${endpoint.p}`,
+      type: p.ty,
+      example: p.x?.[0],
     }));
 }
 

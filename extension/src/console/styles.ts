@@ -116,7 +116,9 @@ export const consoleStyles = `
 .m-PATCH { color: var(--patch); }
 .m-DELETE { color: var(--delete); }
 
-.work { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 10px 12px 0; }
+.work {
+  display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 10px 12px 0;
+}
 .prompt {
   display: flex; flex: none; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface);
@@ -161,7 +163,7 @@ export const consoleStyles = `
   box-shadow: var(--shadow) 0 6px 18px 0;
 }
 .suggestion {
-  display: grid; grid-template-columns: 56px minmax(0, max-content) minmax(0, 1fr); gap: 12px;
+  display: grid; grid-template-columns: 56px minmax(0, max-content) minmax(0, 1fr) auto; gap: 12px;
   align-items: baseline; padding: 3px 12px; cursor: pointer;
 }
 .suggestion.active { background: var(--raised); }
@@ -172,10 +174,32 @@ export const consoleStyles = `
 .suggestion-detail {
   overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis;
 }
+.suggestion.active .suggestion-detail { white-space: normal; }
+.suggestion-detail code { font-size: 11px; }
+.suggestion-type {
+  margin-right: 6px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px;
+}
+.suggestion-example code { color: var(--text); }
+.drawer .suggestion-docs, .drawer .endpoint-docs {
+  color: var(--blue); font-size: 12px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.drawer .suggestion-docs:hover, .drawer .endpoint-docs:hover { text-decoration: underline; }
 .m-param { color: var(--muted); }
 
+.endpoint-info {
+  display: flex; flex: none; align-items: center; gap: 8px;
+  margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border);
+  font-size: 12px; line-height: 20px; white-space: nowrap;
+}
+.endpoint-scope {
+  padding: 0 5px; border: 1px solid var(--border); border-radius: 4px;
+  color: var(--muted); font: 11px/16px ${MONO_FONT};
+}
+
 .request-tabs, .tabs { display: flex; gap: 2px; }
-.request-tabs { align-items: center; }
+.request-tabs { align-items: center; min-width: 0; }
+.request-tabs .tabs { flex: none; }
+.request-tabs .page-object { flex: none; }
 .drawer .page-object {
   display: inline-flex; gap: 6px; align-items: center; margin-left: 6px; padding: 0 8px 0 0;
   overflow: hidden; border: 1px solid var(--border); border-radius: 4px;
@@ -209,6 +233,28 @@ export const consoleStyles = `
   font-family: ${MONO_FONT} !important; font-size: 12px !important;
 }
 .cell-input:focus { outline: none; background: var(--raised); }
+.key-suggestions {
+  position: fixed; z-index: 3; max-width: 560px; margin: 0; padding: 4px 0; overflow: auto;
+  list-style: none; border: 1px solid var(--border); border-radius: 0 0 6px 6px;
+  background: var(--surface); box-shadow: var(--shadow) 0 6px 18px 0;
+}
+.key-suggestion {
+  display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); gap: 10px;
+  align-items: baseline; padding: 2px 8px; font-size: 12px; cursor: pointer;
+}
+.key-suggestion.active { background: var(--raised); }
+.key-name { font: 12px/20px ${MONO_FONT}; }
+.key-type { color: var(--muted); font: 11px/20px ${MONO_FONT}; }
+.param-hint {
+  position: fixed; z-index: 3; display: flex; flex-wrap: wrap; gap: 2px 8px; max-width: 480px;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); box-shadow: var(--shadow) 0 6px 18px 0;
+  font-size: 12px; line-height: 18px;
+}
+.param-hint code { font-weight: 600; }
+.param-hint-type { color: var(--muted); font: 11px/18px ${MONO_FONT}; }
+.param-hint > span:last-child { flex-basis: 100%; color: var(--muted); }
+.key-detail { overflow: hidden; color: var(--muted); white-space: nowrap; text-overflow: ellipsis; }
 
 .body-editor { display: flex; flex-direction: column; gap: 6px; }
 .code-input {

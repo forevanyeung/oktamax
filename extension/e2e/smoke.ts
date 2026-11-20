@@ -245,6 +245,66 @@ async function main() {
   await page.getByRole('button', { name: 'API', exact: true }).click();
   const drawer = page.getByRole('region', { name: 'API console' });
   const prompt = drawer.getByLabel('Request URL');
+  // Query parameters are suggested with their descriptions and examples, and the
+  // endpoint's summary, scope and docs link show under the prompt.
+  await prompt.fill('users?se');
+  const listbox = drawer.getByRole('listbox');
+  await listbox.getByRole('option', { name: /^\? search/ }).waitFor();
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-params.png') });
+  await prompt.press('Tab');
+  await listbox.getByRole('option').first().waitFor();
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-examples.png') });
+  await prompt.press('Escape');
+  const info = drawer.locator('.endpoint-info');
+  await info.getByText('okta.users.read').waitFor();
+  assert.match((await info.getAttribute('title')) ?? '', /List all users/);
+  assert.match(
+    (await info.getByRole('link', { name: /Docs/ }).getAttribute('href')) ?? '',
+    /\/management\/tags\/user\/other\/listusers$/,
+  );
+  // The Params table suggests the endpoint's parameters under the Key cell.
+  await prompt.fill('users');
+  await prompt.press('Escape');
+  const paramsTab = drawer.getByRole('tab', { name: /^Params/ });
+  await paramsTab.click();
+  const key = drawer.locator('.params').getByRole('combobox').first();
+  await key.fill('se');
+  const keyOption = drawer.getByRole('option', { name: /^search/ });
+  await keyOption.waitFor();
+  const [cell, list] = await Promise.all([
+    key.locator('xpath=ancestor::td').boundingBox(),
+    drawer.locator('.key-suggestions').boundingBox(),
+  ]);
+  assert.ok(cell && list && Math.abs(cell.x - list.x) < 1, 'the list lines up with its cell');
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-param-keys.png') });
+  await key.press('ArrowDown');
+  await key.press('Enter');
+  assert.equal(await prompt.inputValue(), 'users?search');
+  // Resting on a parameter's row shows its description after half a second.
+  const paramHint = drawer.getByRole('tooltip');
+  await key.hover();
+  await page.waitForTimeout(250);
+  assert.equal(await paramHint.count(), 0, 'the hint waits for the pointer to rest');
+  await paramHint.getByText(/Searches for users/).waitFor({ timeout: 1000 });
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-param-hint.png') });
+  // It touches its row, so the pointer moves straight onto it, and it stays
+  // while the pointer is on it and goes once the pointer leaves it.
+  const [row, hintBox] = await Promise.all([
+    key.locator('xpath=ancestor::tr').boundingBox(),
+    paramHint.boundingBox(),
+  ]);
+  assert.ok(row && hintBox && hintBox.y <= row.y + row.height, 'no gap between row and hint');
+  const x = hintBox.x + 20;
+  await page.mouse.move(x, row.y + row.height / 2);
+  for (let y = row.y + row.height / 2; y < hintBox.y + 10; y += 2) {
+    await page.mouse.move(x, y);
+    await page.waitForTimeout(20); // slower than the grace period, end to end
+  }
+  await page.waitForTimeout(600);
+  assert.equal(await paramHint.count(), 1, 'the hint stays while the pointer is on it');
+  await page.mouse.move(0, 0);
+  await paramHint.waitFor({ state: 'detached' });
+  await paramsTab.click();
   await prompt.fill('users?limit=2');
   await prompt.press('Enter');
   await drawer.getByText('200 OK').waitFor();
