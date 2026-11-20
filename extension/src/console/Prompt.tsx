@@ -59,6 +59,7 @@ export const Prompt = forwardRef<PromptHandle, Props>(
     // Arrow up at the prompt walks the history, like a shell.
     const cursor = useRef<{ index: number; draft: ApiRequest }>(undefined);
     const list = useRef<HTMLUListElement>(null);
+    const select = useRef<HTMLSelectElement>(null);
 
     const suggestions = open ? suggest(draft.url, draft.method, context) : [];
     const showing = suggestions.length > 0;
@@ -170,6 +171,7 @@ export const Prompt = forwardRef<PromptHandle, Props>(
           }}
         >
           <select
+            ref={select}
             className={`method-select m-${draft.method}`}
             aria-label="Method"
             value={draft.method}
@@ -203,7 +205,18 @@ export const Prompt = forwardRef<PromptHandle, Props>(
           </button>
         </form>
         {showing && (
-          <ul className="suggestions" id="oktamax-suggestions" role="listbox" ref={list}>
+          <ul
+            className="suggestions"
+            id="oktamax-suggestions"
+            role="listbox"
+            ref={list}
+            // Lines the suggestions up with the URL as typed, their methods under the method's.
+            style={
+              select.current
+                ? ({ '--method-width': `${select.current.offsetWidth}px` } as React.CSSProperties)
+                : undefined
+            }
+          >
             {suggestions.map((s, i) => (
               <li
                 key={`${s.method ?? ''} ${s.label}`}
