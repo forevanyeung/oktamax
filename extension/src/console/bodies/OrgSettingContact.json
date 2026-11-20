@@ -1,0 +1,1 @@
+{"PUT /api/v1/org/contacts/{contactType}":{"f":[{"p":"userId","t":"string","d":"Contact user ID"}],"x":[{"n":"contactTypeUserEx","v":{"userId":"00ux3u0ujW1r5AfZC1d7"}}]}}

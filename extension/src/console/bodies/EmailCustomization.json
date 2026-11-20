@@ -1,0 +1,1 @@
+{"POST /api/v1/org/email/bounces/remove-list":{"f":[{"p":"emailAddresses","t":"string[]","d":"A list of email addresses to remove from the email-service bounce list"}],"x":[{"n":"example-1","v":{"emailAddresses":["name@company.com","unknown.email@okta.com","name@okta@com"]}}]}}

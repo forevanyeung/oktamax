@@ -1,0 +1,1 @@
+{"POST /api/v1/authorizationServers/{authServerId}/credentials/lifecycle/keyRotate":{"f":[{"p":"use","t":"string","d":"Purpose of the certificate.","e":["sig"]}]}}

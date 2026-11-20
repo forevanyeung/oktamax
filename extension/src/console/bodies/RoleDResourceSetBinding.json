@@ -1,0 +1,1 @@
+{"POST /api/v1/iam/resource-sets/{resourceSetIdOrLabel}/bindings":{"f":[{"p":"members","t":"string[]","d":"URLs to user and/or group instances that are assigned to the role"},{"p":"role","t":"string","d":"Unique key for the role"}],"x":[{"n":"Example Request","v":{"role":"cr0Yq6IJxGIr0ouum0g3","members":["https://{yourOktaDomain}/api/v1/groups/00guaxWZ0AOa5NFAj0g3"]}}]}}

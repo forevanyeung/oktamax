@@ -1,0 +1,1 @@
+{"PUT /api/v1/users/{userId}/classification":{"f":[{"p":"type","t":"string","d":"The type of user classification","e":["LITE","STANDARD"]}],"x":[{"n":"Set user to LITE","v":{"type":"LITE"}}]}}

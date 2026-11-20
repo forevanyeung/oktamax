@@ -7,6 +7,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 
 import { loadSettings, onSettingsChanged } from '../settings';
 import { fillTemplate, LABELS, pageContext, placeholders, type PageContext } from './context';
+import { BodyEditor } from './BodyEditor';
 import { timeAgo } from './format';
 import { setDrawerInset } from './inset';
 import { setConsoleHandler } from './remote';
@@ -369,72 +370,6 @@ const ParamsEditor = ({
   );
 };
 
-const jsonError = (body: string) => {
-  if (!body.trim()) return undefined;
-  try {
-    JSON.parse(body);
-    return undefined;
-  } catch (error) {
-    return (error as Error).message;
-  }
-};
-
-const BodyEditor = ({
-  request,
-  onChange,
-  onSend,
-}: {
-  request: ApiRequest;
-  onChange: (body: string) => void;
-  onSend: () => void;
-}) => {
-  const error = jsonError(request.body);
-  const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      onSend();
-    } else if (event.key === 'Tab' && !event.shiftKey) {
-      event.preventDefault();
-      const el = event.currentTarget;
-      const { selectionStart: start, selectionEnd: end } = el;
-      onChange(`${el.value.slice(0, start)}  ${el.value.slice(end)}`);
-      requestAnimationFrame(() => el.setSelectionRange(start + 2, start + 2));
-    }
-  };
-
-  return (
-    <div className="body-editor">
-      {request.method === 'GET' && (
-        <p className="hint">
-          GET requests are sent without a body. Pick another method to send one.
-        </p>
-      )}
-      <textarea
-        className="code-input"
-        spellCheck={false}
-        value={request.body}
-        placeholder={'{\n  "profile": { "name": "…" }\n}'}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-      />
-      <div className="body-bar">
-        <span className={error ? 'body-status invalid' : 'body-status'}>
-          {request.body.trim() ? (error ? `Invalid JSON: ${error}` : 'Valid JSON') : 'JSON'}
-        </span>
-        <span className="hint">⌘/Ctrl + Enter to send</span>
-        <button
-          type="button"
-          className="small"
-          disabled={!!error || !request.body.trim()}
-          onClick={() => onChange(JSON.stringify(JSON.parse(request.body), null, 2))}
-        >
-          Format
-        </button>
-      </div>
-    </div>
-  );
-};
-
 const HistoryList = ({
   history,
   onLoad,
@@ -463,7 +398,12 @@ const HistoryList = ({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <button type="button" className="clear-history" disabled={!history.length} onClick={onClear}>
+        <button
+          type="button"
+          className="clear-history"
+          disabled={!history.length}
+          onClick={onClear}
+        >
           Clear
         </button>
       </div>
