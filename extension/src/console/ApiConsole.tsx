@@ -80,7 +80,10 @@ const DOUBLE_PRESS_MS = 300;
 const DRAG_THRESHOLD = 4;
 /** How long the pointer rests on a parameter before its description shows: half of Chrome's own tooltip delay on macOS. */
 const HINT_DELAY_MS = 500;
-/** Time for the pointer to cross the gap between a row and its hint, and stay on it. */
+/**
+ * The hint touches its row (overlapping the row's border, so no gap is left
+ * even at fractional pixels); this is only slack for the pointer's path.
+ */
 const HINT_GRACE_MS = 150;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -353,8 +356,8 @@ const ParamsEditor = ({
           onMouseLeave={leaveHint}
           style={
             innerHeight - hover.rect.bottom >= 80
-              ? { left: hover.rect.left, top: hover.rect.bottom + 4 }
-              : { left: hover.rect.left, bottom: innerHeight - hover.rect.top + 4 }
+              ? { left: hover.rect.left, top: hover.rect.bottom - 1 }
+              : { left: hover.rect.left, bottom: innerHeight - hover.rect.top - 1 }
           }
         >
           <code>{hovered.n}</code>

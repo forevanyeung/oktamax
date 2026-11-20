@@ -287,8 +287,19 @@ async function main() {
   assert.equal(await paramHint.count(), 0, 'the hint waits for the pointer to rest');
   await paramHint.getByText(/Searches for users/).waitFor({ timeout: 1000 });
   await page.screenshot({ path: join(import.meta.dirname, 'api-console-param-hint.png') });
-  // It stays while the pointer is on it, and goes once the pointer leaves it.
-  await paramHint.hover();
+  // It touches its row, so the pointer moves straight onto it, and it stays
+  // while the pointer is on it and goes once the pointer leaves it.
+  const [row, hintBox] = await Promise.all([
+    key.locator('xpath=ancestor::tr').boundingBox(),
+    paramHint.boundingBox(),
+  ]);
+  assert.ok(row && hintBox && hintBox.y <= row.y + row.height, 'no gap between row and hint');
+  const x = hintBox.x + 20;
+  await page.mouse.move(x, row.y + row.height / 2);
+  for (let y = row.y + row.height / 2; y < hintBox.y + 10; y += 2) {
+    await page.mouse.move(x, y);
+    await page.waitForTimeout(20); // slower than the grace period, end to end
+  }
   await page.waitForTimeout(600);
   assert.equal(await paramHint.count(), 1, 'the hint stays while the pointer is on it');
   await page.mouse.move(0, 0);
