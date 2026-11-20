@@ -287,6 +287,10 @@ async function main() {
   assert.equal(await paramHint.count(), 0, 'the hint waits for the pointer to rest');
   await paramHint.getByText(/Searches for users/).waitFor({ timeout: 1000 });
   await page.screenshot({ path: join(import.meta.dirname, 'api-console-param-hint.png') });
+  // It stays while the pointer is on it, and goes once the pointer leaves it.
+  await paramHint.hover();
+  await page.waitForTimeout(600);
+  assert.equal(await paramHint.count(), 1, 'the hint stays while the pointer is on it');
   await page.mouse.move(0, 0);
   await paramHint.waitFor({ state: 'detached' });
   await paramsTab.click();

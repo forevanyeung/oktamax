@@ -80,6 +80,8 @@ const DOUBLE_PRESS_MS = 300;
 const DRAG_THRESHOLD = 4;
 /** How long the pointer rests on a parameter before its description shows: half of Chrome's own tooltip delay on macOS. */
 const HINT_DELAY_MS = 500;
+/** Time for the pointer to cross the gap between a row and its hint, and stay on it. */
+const HINT_GRACE_MS = 150;
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
@@ -244,13 +246,21 @@ const ParamsEditor = ({
   const hintFor = (key: string) => known.find((p) => p.n === key);
   const unused = known.filter((p) => !params.some((used) => used.key === p.n));
 
-  // A parameter's description, shown under its row once the pointer rests on it.
+  // A parameter's description, shown under its row once the pointer rests on it,
+  // and kept while the pointer is on the row or the hint itself.
   const [hover, setHover] = useState<{ index: number; rect: DOMRect }>();
   const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
   const hideHint = () => {
     clearTimeout(hoverTimer.current);
     setHover(undefined);
+  };
+  const keepHint = () => clearTimeout(hoverTimer.current);
+  const leaveHint = () => {
+    clearTimeout(hoverTimer.current);
+    // Shown: hides unless the pointer gets to the hint (or back to the row) in time.
+    // Pending: never shows.
+    if (hover) hoverTimer.current = setTimeout(() => setHover(undefined), HINT_GRACE_MS);
   };
   const hovered = hover && hintFor(params[hover.index]?.key ?? '');
   const rows = [...params, { key: '', value: '' }];
@@ -289,6 +299,7 @@ const ParamsEditor = ({
               <tr
                 key={i}
                 onMouseEnter={(e) => {
+                  if (hover?.index === i) return keepHint();
                   hideHint();
                   if (!hint?.d) return;
                   const row = e.currentTarget;
@@ -297,7 +308,7 @@ const ParamsEditor = ({
                     HINT_DELAY_MS,
                   );
                 }}
-                onMouseLeave={hideHint}
+                onMouseLeave={leaveHint}
                 onMouseDown={hideHint}
                 onKeyDown={hideHint}
               >
@@ -338,6 +349,8 @@ const ParamsEditor = ({
         <div
           className="param-hint"
           role="tooltip"
+          onMouseEnter={keepHint}
+          onMouseLeave={leaveHint}
           style={
             innerHeight - hover.rect.bottom >= 80
               ? { left: hover.rect.left, top: hover.rect.bottom + 4 }

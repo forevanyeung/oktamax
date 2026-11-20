@@ -235,7 +235,7 @@ export const consoleStyles = `
   position: fixed; z-index: 3; display: flex; flex-wrap: wrap; gap: 2px 8px; max-width: 480px;
   padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--surface); box-shadow: var(--shadow) 0 6px 18px 0;
-  font-size: 12px; line-height: 18px; pointer-events: none;
+  font-size: 12px; line-height: 18px;
 }
 .param-hint code { font-weight: 600; }
 .param-hint-type { color: var(--muted); font: 11px/18px ${MONO_FONT}; }
