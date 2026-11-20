@@ -76,6 +76,15 @@ export const config = {
    */
   oauthSecret: process.env.OAUTH_SECRET,
   /**
+   * Usage telemetry (`telemetry.ts`): JSON lines on stdout, with admins, orgs and chats as
+   * hashes keyed by TELEMETRY_SECRET. Without the secret the hashes change on every restart.
+   * TELEMETRY=off turns it off.
+   */
+  telemetry: {
+    enabled: process.env.TELEMETRY !== 'off',
+    secret: process.env.TELEMETRY_SECRET || undefined,
+  },
+  /**
    * Which model to use: Anthropic's API if there's an API key, otherwise Bedrock.
    * MODEL_ID is a model ID for the API, or a Bedrock model or inference profile ID.
    */

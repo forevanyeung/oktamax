@@ -436,6 +436,12 @@ docker run -p 8787:8787 --env-file server/.env oktamax-server
     profile. Use the ID your account has access to.
   - AWS credentials come from the standard chain (env vars, SSO profile, or an instance/task
     role). They need `bedrock:InvokeModelWithResponseStream` on the model.
+- **Usage telemetry.** The server writes a JSON line to stdout for each reply (`llm.chat.turn`)
+  and each tool call it runs (`llm.tool.call`), for a log pipeline like Datadog's to graph:
+  tokens (input, output, cache), context size, steps, tools called, timings, finish reason and
+  outcome. Never message text, page content, tool inputs or outputs. Admins (`usr.id`), orgs and
+  chats are HMAC hashes keyed by `TELEMETRY_SECRET`; set it so they stay the same across
+  restarts. `TELEMETRY=off` turns it off. See `server/src/telemetry.ts`.
 - **Chat history and in-flight streams are kept in memory.** That suits a single instance. To run
   more than one, implement `ChatStore` on a database and swap `StreamBuffer` for
   `resumable-stream` on Redis; the routes stay the same.

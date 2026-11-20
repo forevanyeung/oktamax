@@ -29,6 +29,7 @@ import { StreamBuffer } from '@oktamax/shared/streamBuffer';
 import { orgFromHeader, principalKey, requireAuth } from '../auth';
 import { ToolHooks } from '../mcp/hooks';
 import type { OktaMcpProcessPool } from '../mcp/processPool';
+import { defaultTelemetrySink, trackChatTurn, type TelemetrySink } from '../telemetry';
 import { consoleOutput, pageTools } from './pageTools';
 import { instructions, withPageContext } from './prompt';
 import type { Chat, ChatMessage, ChatStore } from './store';
@@ -42,6 +43,8 @@ export interface ChatDeps {
   oktaMcp: Pick<OktaMcpProcessPool, 'prepare'>;
   /** Rules for every MCP tool call (`mcp/hooks/`), also applied to API console responses. */
   hooks?: ToolHooks;
+  /** Where usage telemetry goes (`telemetry.ts`). Defaults to JSON lines on stdout. */
+  telemetrySink?: TelemetrySink;
 }
 
 const pageContextSchema = z.object({
@@ -67,6 +70,7 @@ export function createChatRoutes({
   mcpUrl,
   oktaMcp,
   hooks = new ToolHooks(),
+  telemetrySink = defaultTelemetrySink,
 }: ChatDeps) {
   // The extension says which org's admin console the chat is on (X-Okta-Org).
   const chatRoutes = new Hono().use(requireAuth(orgFromHeader));
@@ -129,8 +133,20 @@ export function createChatRoutes({
       },
     });
     const abort = new AbortController();
+    const telemetry = trackChatTurn(
+      {
+        principal,
+        chatId: chat.id,
+        kind: answering ? 'console_result' : 'question',
+        messages: chat.messages,
+        pageContext: !answering && Boolean(message!.metadata?.page),
+        pageTools: new Set(Object.keys(pageTools)),
+      },
+      telemetrySink,
+    );
 
     const result = streamText({
+      ...telemetry,
       model,
       instructions: instructions(principal.username, mcp.instructions),
       messages: await convertToModelMessages(withPageContext(chat.messages), {
