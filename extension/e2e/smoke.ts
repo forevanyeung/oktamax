@@ -346,7 +346,8 @@ async function main() {
   assert.equal(await prompt.inputValue(), 'groups');
   await prompt.press('Escape'); // closes the suggestions
   await drawer.getByRole('tab', { name: 'Body' }).click();
-  await drawer.locator('textarea').fill('{"profile":{"name":""}}');
+  const editor = drawer.locator('.cm-content');
+  await editor.fill('{"profile":{"name":""}}');
   await drawer.getByRole('button', { name: 'Format' }).click();
   await drawer.getByRole('button', { name: 'Send' }).click();
   await drawer.getByText('400 Bad Request').waitFor();
@@ -359,16 +360,41 @@ async function main() {
   });
   await page.screenshot({ path: join(import.meta.dirname, 'api-console-error.png') });
 
-  // Beside the body: its fields from the API reference, what's missing, and examples.
-  const hints = drawer.getByRole('complementary', { name: 'Request body reference' });
-  await hints.getByText('profile.name').waitFor();
+  // The body editor knows the endpoint's body: brackets close themselves, Ctrl + Space
+  // completes its keys (required first), and problems are underlined.
+  const status = drawer.getByRole('status');
   await prompt.fill('users');
   await prompt.press('Escape');
-  await drawer.locator('textarea').fill('');
-  await hints.getByText('Missing a required field: profile').waitFor();
-  await hints.getByRole('button', { name: 'Insert example' }).click();
-  assert.match(await drawer.locator('textarea').inputValue(), /"login": /);
-  await hints.getByText('Has every required field.').waitFor();
+  await editor.fill('');
+  await editor.press('{');
+  assert.equal(await editor.innerText(), '{}', 'the brace closes itself');
+  await editor.press('Control+Space');
+  const completions = drawer.locator('.cm-tooltip-autocomplete li');
+  await completions.first().waitFor();
+  assert.match((await completions.first().textContent()) ?? '', /^profileobject · required/);
+  // The list ignores Enter for a moment after it opens, so a fast typist doesn't pick by accident.
+  await page.waitForTimeout(100);
+  await editor.press('Enter');
+  await editor.pressSequentially('"log');
+  await completions.filter({ hasText: 'login' }).first().waitFor();
+  await drawer.locator('.cm-completionInfo').waitFor();
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-complete.png') });
+  await page.waitForTimeout(100);
+  await editor.press('Enter');
+  await editor.pressSequentially('ada@acme.com');
+  assert.match(await editor.innerText(), /^\{"profile": \{\n\s+"login": "ada@acme\.com"\n\}\}$/);
+  await status.getByText('Matches the API reference').waitFor();
+
+  await editor.fill('{"profile": {}, "nickname": "Al"}');
+  await status.getByText('Unknown field "nickname".').waitFor();
+  await drawer.locator('.cm-lintRange-warning').waitFor();
+  await page.screenshot({ path: join(import.meta.dirname, 'api-console-lint.png') });
+
+  // The spec's examples start a body.
+  await editor.fill('');
+  await drawer.getByRole('button', { name: 'Insert example' }).click();
+  assert.match(await editor.innerText(), /"login": /);
+  await status.getByText('Matches the API reference').waitFor();
   await page.screenshot({ path: join(import.meta.dirname, 'api-console-body.png') });
 
   // History keeps every request, newest first, and survives a page load.

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vite-plus/test';
 
-import { missingFields, presentFields, skeleton, type BodyField } from '../body';
+import { completionsAt, lintBody, skeleton, type BodyField, type BodySchema } from '../body';
 import { fillTemplate, pageContext, placeholders } from '../context';
 import { csvFilename, flatten, toCsv } from '../csv';
 import { cell, formatBytes, isTable, oktaError, tableColumns, timeAgo } from '../format';
 import { joinUrl, resolveUrl, splitMethod, splitUrl } from '../request';
+import { cursorAt, keyAt, parseJson } from '../jsonDoc';
 import { addToHistory, type HistoryEntry } from '../store';
 import {
   docsUrl,
@@ -259,8 +260,15 @@ describe('body hints', () => {
     { p: 'roles[].type', t: 'string', r: 1, e: ['SUPER_ADMIN', 'ORG_ADMIN'] },
     { p: 'type', t: 'string', r: 1, e: ['OKTA', 'SAML'] },
   ];
-  const missing = (body: unknown) => missingFields(fields, body).map((f) => f.p);
-
+  const schema: BodySchema = { f: fields };
+  /** `|` marks the cursor. */
+  const at = (text: string) => [text.replace('|', ''), text.indexOf('|')] as const;
+  const labels = (text: string) => {
+    const [doc, pos] = at(text);
+    return completionsAt(doc, pos, schema)?.options.map((o) => o.label);
+  };
+  const problems = (body: unknown) =>
+    lintBody(typeof body === 'string' ? body : JSON.stringify(body), schema).map((p) => p.message);
   it("finds a whole URL's endpoint by method, preferring literal paths", () => {
     const find = (url: string, method: 'GET' | 'POST') => endpointFor(url, method, endpoints)?.s;
     expect(find('users', 'POST')).toBe('Create a user');
@@ -272,27 +280,116 @@ describe('body hints', () => {
     expect(find('users/me', 'POST')).toBe('Update a user');
   });
 
-  it('lists required fields the body is missing, only under parents it has', () => {
-    expect(missing({})).toEqual(['profile', 'type']);
-    expect(missing({ profile: { login: 'a@x.com' }, type: 'OKTA' })).toEqual(['profile.email']);
-    expect(missing({ profile: { login: 'a', email: 'a' }, type: 'OKTA', credentials: {} })).toEqual(
-      [],
-    );
-    expect(
-      missing({
-        profile: { login: 'a', email: 'a' },
-        type: 'OKTA',
-        credentials: { password: {} },
-        roles: [{ type: 'ORG_ADMIN' }, {}],
-      }),
-    ).toEqual(['credentials.password.value', 'roles[].type']);
-    expect(missing([])).toEqual(['profile', 'type']);
+  it('reads where the cursor is in half-typed JSON', () => {
+    const cursor = (text: string) => {
+      const [doc, pos] = at(text);
+      const c = cursorAt(doc, pos);
+      return c && { path: c.path, slot: c.slot, key: c.key, prefix: c.prefix, keys: c.keys };
+    };
+    expect(cursor('{|')).toEqual({ path: '', slot: 'key', prefix: '', keys: [] });
+    expect(cursor('{"type": "OKTA", "profile": {"lo|"}}')).toEqual({
+      path: 'profile',
+      slot: 'key',
+      prefix: 'lo',
+      keys: [],
+    });
+    expect(cursor('{"profile": {}, "type": "O|')).toMatchObject({ slot: 'value', key: 'type' });
+    expect(cursor('{"roles": [{"type": "SUPER_ADMIN"}, {"ty|')).toMatchObject({
+      path: 'roles[]',
+      keys: [],
+    });
+    // A missing comma before a key still reads as a key.
+    expect(cursor('{"type": "OKTA"\n  "|"')).toMatchObject({ slot: 'key', keys: ['type'] });
+    expect(cursor('{"a": "x, {y}|"')).toMatchObject({ slot: 'value', prefix: 'x, {y}' });
+    expect(cursor('|')).toBeUndefined();
+    expect(keyAt('{"profile": {"login": 1}}', 15)).toEqual({
+      path: 'profile.login',
+      from: 13,
+      to: 20,
+    });
   });
 
-  it('marks the fields a body sets', () => {
-    expect([
-      ...presentFields(fields, { profile: { login: 'a' }, roles: [{ type: 'X' }], type: null }),
-    ]).toEqual(['profile', 'profile.login', 'roles', 'roles[].type']);
+  it("completes an object's other keys, required first, and allowed values", () => {
+    expect(labels('{"type": "OKTA", |}')).toEqual(['profile', 'credentials', 'groupIds', 'roles']);
+    expect(labels('{"profile": {"login": "a", "|"}}')).toEqual(['email', 'city']);
+    expect(labels('{"roles": [{"|"}]}')).toEqual(['type']);
+    expect(labels('{"type": "|"}')).toEqual(['OKTA', 'SAML']);
+    expect(labels('{"roles": [{"type": |}]}')).toEqual(['SUPER_ADMIN', 'ORG_ADMIN']);
+    expect(labels('{"profile": {"city": |}}')).toBeUndefined();
+
+    const [doc, pos] = at('{"type": "OKTA", "pro|"}');
+    const result = completionsAt(doc, pos, schema)!;
+    // Replaces the half-typed key and the quote that closed itself.
+    expect([result.from, result.to, result.typing]).toEqual([17, 22, true]);
+    expect(result.options[0]).toMatchObject({
+      label: 'profile',
+      snippet: '"profile": {\n\t${}\n}',
+      required: true,
+    });
+    expect(result.options.find((o) => o.label === 'groupIds')?.snippet).toBe('"groupIds": [${}]');
+  });
+
+  it('keeps positions when parsing JSON', () => {
+    expect(parseJson('{"a": [1, true]}')).toEqual({
+      kind: 'object',
+      from: 0,
+      to: 16,
+      props: [
+        {
+          key: 'a',
+          keyFrom: 1,
+          keyTo: 4,
+          value: {
+            kind: 'array',
+            from: 6,
+            to: 15,
+            items: [
+              { kind: 'number', from: 7, to: 8, value: 1 },
+              { kind: 'boolean', from: 10, to: 14, value: true },
+            ],
+          },
+        },
+      ],
+    });
+    expect(parseJson('{"a": }')).toBeUndefined();
+    expect(parseJson('{"a": 1} x')).toBeUndefined();
+  });
+
+  it('underlines missing, unknown, mistyped and disallowed fields', () => {
+    expect(problems({})).toEqual(['Missing required fields: profile, type.']);
+    expect(problems({ profile: { login: 'a@x.com' }, type: 'OKTA' })).toEqual([
+      'Missing required field in profile: email.',
+    ]);
+    expect(
+      problems({ profile: { login: 'a', email: 'a' }, type: 'OKTA', credentials: {} }),
+    ).toEqual([]);
+    expect(
+      problems({
+        profile: { login: 'a', email: 'a' },
+        type: 'LDAP',
+        credentials: { password: {} },
+        roles: [{ type: 'ORG_ADMIN' }, {}],
+        groupIds: 'x',
+        nickname: 'Al',
+      }),
+    ).toEqual([
+      '"LDAP" isn\'t an allowed type: OKTA, SAML.',
+      'Missing required field in credentials.password: value.',
+      'Missing required field in roles[]: type.',
+      'groupIds should be an array, not a string.',
+      'Unknown field "nickname".',
+    ]);
+    // Where it's reported: the key of the object missing something.
+    const [missing] = lintBody('{"type": "OKTA", "profile": {}}', schema);
+    expect(missing).toMatchObject({ from: 17, to: 26, severity: 'error' });
+    // Objects that take other fields, and enums with more values than listed, aren't flagged.
+    expect(
+      lintBody(
+        JSON.stringify({ profile: { login: 'a', email: 'a', custom: 1 }, type: 'OKTA', x: 1 }),
+        { f: fields.map((f) => (f.p === 'profile' ? { ...f, a: 1 } : f)), a: 1 },
+      ),
+    ).toEqual([]);
+    expect(problems('{"type": ')).toEqual([]);
   });
 
   it('starts a body from the required fields when there are no examples', () => {

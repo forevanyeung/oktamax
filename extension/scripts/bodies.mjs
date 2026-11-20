@@ -20,7 +20,7 @@ const MAX_FIELDS = 200;
 const MAX_EXAMPLES = 6;
 const MAX_EXAMPLE_LENGTH = 4000;
 const MAX_DESCRIPTION = 140;
-const MAX_ENUM = 12;
+const MAX_ENUM = 40;
 const JSON_TYPES = ['application/json', 'application/merge-patch+json'];
 
 const source = process.argv[2] ?? SPEC;
@@ -100,6 +100,16 @@ function typeOf(schema) {
   return schema.type ?? 'any';
 }
 
+/**
+ * Does an object take fields the spec doesn't list? Free-form maps, custom profile
+ * attributes and the fields of a discriminated subtype (a policy's `settings`) do.
+ */
+const isOpen = (schema) =>
+  !!schema.additionalProperties ||
+  !!schema.discriminator ||
+  !!(schema.oneOf ?? schema.anyOf)?.length ||
+  !Object.keys(schema.properties ?? {}).length;
+
 /** The fields of `schema`, with dotted paths under `prefix`. */
 function flatten(node, prefix = '', depth = 0, chain = new Set(), out = []) {
   if (node?.$ref) {
@@ -122,18 +132,20 @@ function flatten(node, prefix = '', depth = 0, chain = new Set(), out = []) {
     if (discriminator?.propertyName === name && discriminator.mapping) {
       values = Object.keys(discriminator.mapping);
     }
-    if (values?.length)
-      field.e = values
-        .filter((v) => v !== null)
-        .slice(0, MAX_ENUM)
-        .map(String);
+    const items = prop.type === 'array' ? merged(prop.items) : undefined;
+    const object = prop.type === 'object' ? prop : items?.type === 'object' ? items : undefined;
+    // Its fields aren't all listed: don't call the others unknown.
+    if (object && (isOpen(object) || depth + 1 >= MAX_DEPTH)) field.a = 1;
+    const allowed = values?.filter((v) => v !== null).map(String) ?? [];
+    if (allowed.length) field.e = allowed.slice(0, MAX_ENUM);
+    // Not every allowed value is listed: don't call the others wrong.
+    if (allowed.length > MAX_ENUM) field.m = 1;
     out.push(field);
 
     if (depth + 1 >= MAX_DEPTH) continue;
     if (prop.type === 'object' && Object.keys(prop.properties).length) {
       flatten(raw, path, depth + 1, chain, out);
-    } else if (prop.type === 'array') {
-      const items = merged(prop.items);
+    } else if (items) {
       if (items.type === 'object' && Object.keys(items.properties).length) {
         flatten(prop.items, `${path}[]`, depth + 1, chain, out);
       }
@@ -177,8 +189,10 @@ for (const [path, item] of Object.entries(spec.paths)) {
     if (!fields.length && !x.length) continue;
     const tag = op.tags?.[0] ?? 'Other';
     byTag[tag] ??= {};
+    const root = content.schema ? merged(content.schema) : {};
     byTag[tag][`${method.toUpperCase()} ${rename(path)}`] = {
       f: fields,
+      ...(isOpen(root) || fields.length >= MAX_FIELDS ? { a: 1 } : {}),
       ...(x.length ? { x } : {}),
     };
     count++;
