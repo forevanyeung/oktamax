@@ -1,9 +1,9 @@
 name: Release
 
 # Releases the extension or the chat server, each with its own version (see shared/src/version.ts
-# for how they stay compatible). Bumps the version in its package.json, commits that to main, tags
-# the commit `<component>-v<version>`, and creates a GitHub pre-release whose notes list the pull
-# requests since its last release. The extension then goes to the Chrome Web Store; the release
+# for how they stay compatible). Bumps the version in its package.json, merges that into main through
+# a pull request, tags the merge `<component>-v<version>`, and creates a GitHub pre-release whose
+# notes list the pull requests since its last release. The extension then goes to the Chrome Web Store; the release
 # becomes a full release once the store publishes it (promote-release.yml). A server release is
 # promoted by hand when it's deployed.
 
@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
   id-token: write
 
 concurrency:
@@ -58,20 +59,33 @@ jobs:
           node scripts/release.mjs "$COMPONENT" "$BUMP" --write --notes "$RUNNER_TEMP/notes.md" | tee -a "$GITHUB_OUTPUT"
           { echo "## $(grep '^title=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)"; echo; cat "$RUNNER_TEMP/notes.md"; } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit and tag
+      # main only takes changes through pull requests, so the version bump goes through one that
+      # the workflow opens and merges itself. Its title starts with "Release", which release.mjs
+      # leaves out of later notes.
+      - name: Merge the version bump and tag it
         env:
+          GH_TOKEN: ${{ github.token }}
           COMPONENT: ${{ inputs.component }}
           VERSION: ${{ steps.next.outputs.version }}
           TAG: ${{ steps.next.outputs.tag }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          # The first release keeps the version already in package.json: nothing to commit.
+          # The first release keeps the version already in package.json: nothing to merge.
           if ! git diff --quiet; then
+            branch="release/$TAG"
+            git switch -c "$branch"
             git commit -am "Release $COMPONENT $VERSION"
+            git push origin "$branch"
+            pr=$(gh pr create --base main --head "$branch" --title "Release $COMPONENT $VERSION" \
+              --body "Sets the $COMPONENT version to $VERSION for \`$TAG\`. Opened and merged by the Release workflow.")
+            gh pr merge "$pr" --merge --delete-branch
+            sha=$(gh pr view "$pr" --json mergeCommit --jq .mergeCommit.oid)
+            git fetch origin "$sha"
+            git checkout --detach "$sha"
           fi
           git tag -a "$TAG" -m "Release $COMPONENT $VERSION"
-          git push --atomic origin HEAD:main "$TAG"
+          git push origin "$TAG"
 
       - name: Create the pre-release
         env:
