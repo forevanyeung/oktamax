@@ -149,10 +149,7 @@ export const consoleStyles = `
   box-shadow: var(--shadow) 0 6px 18px 0;
 }
 .suggestion {
-  display: grid; gap: 12px;
-  /* The first column ends where the URL's text starts: past the method, its border and padding. */
-  grid-template-columns:
-    calc(var(--method-width, 68px) - 12px) minmax(0, max-content) minmax(0, 1fr) auto;
+  display: grid; grid-template-columns: 56px minmax(0, max-content) minmax(0, 1fr) auto; gap: 12px;
   align-items: baseline; padding: 3px 12px; cursor: pointer;
 }
 .suggestion.active { background: var(--raised); }
