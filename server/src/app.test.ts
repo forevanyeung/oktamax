@@ -18,11 +18,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vite-plus/test';
 import { createApp } from './app';
 import { MemoryChatStore } from './chat/store';
 import { ToolHooks } from './mcp/hooks';
+import type { TelemetryEvent } from './telemetry';
 import { fakeOktaMcpPool, mockOkta, scriptedModel, TEST_CLIENT_ID, TEST_ORG } from './testing';
 
 const okta = mockOkta();
 const model = scriptedModel();
 const oktaMcp = fakeOktaMcpPool();
+const telemetry: TelemetryEvent[] = [];
 
 let server: ServerType;
 let base: string;
@@ -38,7 +40,14 @@ beforeAll(async () => {
     { type: 'redact' },
     { type: 'blockTools', tools: ['get_user'], orgs: ['other.okta.com'] },
   ]);
-  app = createApp({ model, store: new MemoryChatStore(), mcpUrl: `${base}/mcp`, oktaMcp, hooks });
+  app = createApp({
+    model,
+    store: new MemoryChatStore(),
+    mcpUrl: `${base}/mcp`,
+    oktaMcp,
+    hooks,
+    telemetrySink: (event) => telemetry.push(event),
+  });
 });
 
 afterAll(async () => {
@@ -443,6 +452,36 @@ describe('chat', () => {
     // The tool ran in Ada's own Okta MCP process, with Ada's token.
     expect(JSON.stringify(reply.parts)).toContain('token-ada');
     expect(JSON.stringify(reply.parts)).toContain('One user is locked out');
+  });
+
+  it('reports usage without anything that identifies the admin or what they asked', () => {
+    const turn = telemetry.find((e) => e.evt.name === 'llm.chat.turn')!;
+    expect(turn.evt.outcome).toBe('completed');
+    expect(turn.llm).toMatchObject({
+      kind: 'question',
+      turn: 1,
+      history_messages: 1,
+      prompt_chars: 'Who is locked out?'.length,
+      page_context: true,
+      steps: 2,
+      finish_reason: 'stop',
+      // Two model calls of 10 in, 10 out: the context is the last call's input.
+      tokens: { input: 20, output: 20 },
+      context_tokens: 10,
+      tools: { calls: 1, names: ['list_users'], mcp_calls: 1, page_calls: 0 },
+    });
+    const tool = telemetry.find((e) => e.evt.name === 'llm.tool.call')!;
+    expect(tool).toMatchObject({
+      evt: { outcome: 'ok' },
+      llm: { tool: { name: 'list_users', source: 'mcp' } },
+    });
+    expect(tool.usr).toEqual(turn.usr);
+
+    // No user ID, username, org, chat ID, question, page or tool input/output.
+    const sent = JSON.stringify(telemetry);
+    for (const value of ['00uada', 'example.com', 'acme', 'chat-1', 'Who is', 'People', 'LOCKED']) {
+      expect(sent).not.toContain(value);
+    }
   });
 
   it('gives the model the page the question was asked from', async () => {
