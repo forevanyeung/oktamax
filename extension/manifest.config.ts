@@ -29,8 +29,9 @@ export default defineManifest(({ command }) => ({
   version: pkg.version,
   icons,
   // identity: Okta sign-in for the chat server. storage: settings and chat state.
+  // unlimitedStorage: the API console keeps its last 30 responses, which can be large.
   // offscreen: the on-device assistant runs Okta's MCP server in an offscreen document.
-  permissions: ['storage', 'identity', 'offscreen'],
+  permissions: ['storage', 'unlimitedStorage', 'identity', 'offscreen'],
   host_permissions: [
     // Token exchange with the Okta org authorization server.
     'https://*.okta.com/*',

@@ -24,16 +24,27 @@ import {
 } from './request';
 import { ResponseView } from './ResponseView';
 import { docsUrl, endpointFor, objectPath, type Endpoint, type QueryParam } from './suggest';
-import { addToHistory, loadState, saveState, type ConsoleState, type HistoryEntry } from './store';
+import {
+  addToHistory,
+  loadResponse,
+  loadState,
+  removeResponses,
+  saveResponse,
+  savedIds,
+  saveState,
+  RESPONSE_LIMIT,
+  type ConsoleState,
+  type HistoryEntry,
+} from './store';
 
 type Result =
   | { status: 'idle' }
   | { status: 'sending'; request: ApiRequest; stepUp?: boolean }
   | { status: 'done'; request: ApiRequest; response: ApiResponse; id: number }
   | { status: 'error'; request: ApiRequest; message: string }
-  /** A history entry's response, being looked up in DevTools' Network log. */
+  /** A history entry's response, being loaded, or looked up in DevTools' Network log. */
   | { status: 'looking'; request: ApiRequest; entryId: string }
-  /** A history entry whose response isn't in the Network log. */
+  /** A history entry whose response isn't saved, nor in the Network log. */
   | { status: 'gone'; request: ApiRequest; entry: HistoryEntry; devtools: boolean };
 
 /** The page's objects, kept up to date as the admin console navigates. */
@@ -481,6 +492,18 @@ export const ApiConsole = () => {
     return () => clearTimeout(timer);
   }, [state]);
 
+  // Drops the saved responses of entries that lost theirs: past the latest
+  // RESPONSE_LIMIT, replaced by the same request again, or cleared.
+  const history = state?.history;
+  const saved = useRef<Set<string>>(undefined);
+  useEffect(() => {
+    if (!history) return;
+    const now = savedIds(history);
+    const dropped = [...(saved.current ?? [])].filter((id) => !now.has(id));
+    saved.current = now;
+    if (dropped.length) void removeResponses(dropped);
+  }, [history]);
+
   const update = useCallback(
     (change: Partial<ConsoleState>) => setState((s) => s && { ...s, ...change }),
     [],
@@ -600,14 +623,16 @@ export const ApiConsole = () => {
       return new Error(`The path has placeholders this page can't fill: ${names}`);
     }
     setResult({ status: 'sending', request });
-    // Tags the request, so its response can be found in DevTools' Network log later.
+    // Tags the request, so its response can be found in DevTools' Network log once it's no
+    // longer saved.
     const id = crypto.randomUUID();
-    const entry = (status: number, ms: number): HistoryEntry => ({
+    const entry = (status: number, ms: number, saved = false): HistoryEntry => ({
       ...request,
       id,
       status,
       ms,
       at: Date.now(),
+      ...(saved && { saved }),
     });
     try {
       const response = await send(request, {
@@ -615,8 +640,13 @@ export const ApiConsole = () => {
         onStepUp: () => setResult({ status: 'sending', request, stepUp: true }),
       });
       setResult({ status: 'done', request, response, id: ++responses.current });
+      const saved = await saveResponse(id, response);
       setState(
-        (s) => s && { ...s, history: addToHistory(s.history, entry(response.status, response.ms)) },
+        (s) =>
+          s && {
+            ...s,
+            history: addToHistory(s.history, entry(response.status, response.ms, saved)),
+          },
       );
       return response;
     } catch (error) {
@@ -639,16 +669,20 @@ export const ApiConsole = () => {
   };
   const openUrl = (url: string) => load({ method: 'GET', url, body: '' }, true);
 
-  /** Loads a history entry into the prompt and shows its response, from DevTools' Network log. */
+  /**
+   * Loads a history entry into the prompt and shows its response: saved, or
+   * for an older one, from DevTools' Network log.
+   */
   const loadPast = async (entry: HistoryEntry) => {
     load(entry);
     const request = { method: entry.method, url: entry.url, body: entry.body };
     setResult({ status: 'looking', request, entryId: entry.id });
-    const past = await pastResponse(entry.id);
-    const next: Result =
-      past.state === 'found'
-        ? { status: 'done', request, response: toResponse(past.entry), id: ++responses.current }
-        : { status: 'gone', request, entry, devtools: past.state === 'missing' };
+    const saved = entry.saved ? await loadResponse(entry.id) : undefined;
+    const past = saved ? undefined : await pastResponse(entry.id);
+    const found = saved ?? (past?.state === 'found' ? past.entry : undefined);
+    const next: Result = found
+      ? { status: 'done', request, response: toResponse(found), id: ++responses.current }
+      : { status: 'gone', request, entry, devtools: past?.state === 'missing' };
     // Unless something else was sent or picked meanwhile.
     setResult((current) =>
       current.status === 'looking' && current.entryId === entry.id ? next : current,
@@ -866,17 +900,20 @@ export const ApiConsole = () => {
                 : `Sending ${result.request.method} ${result.request.url}…`}
             </p>
           )}
-          {result.status === 'looking' && (
-            <p className="hint placeholder">Looking for this response in DevTools' Network log…</p>
-          )}
+          {result.status === 'looking' && <p className="hint placeholder">Loading the response…</p>}
           {result.status === 'gone' && (
             <p className="hint placeholder">
-              {result.devtools
-                ? "This response isn't in DevTools' Network log any more: it was sent before DevTools opened, or the log was cleared (turn on Preserve log to keep it across page loads)."
-                : "Responses are read back from DevTools' Network log. Open DevTools (F12) on this tab, then send the request again to see its response here later."}{' '}
-              {result.entry.status
-                ? `It returned ${result.entry.status} in ${result.entry.ms} ms.`
-                : ''}{' '}
+              {result.entry.status === 0 ? (
+                "This request didn't get a response."
+              ) : (
+                <>
+                  Only the last {RESPONSE_LIMIT} responses are kept, and this one isn't among them
+                  {result.devtools
+                    ? ", or in DevTools' Network log (it was sent before DevTools opened, or the log was cleared)."
+                    : ". Older ones can be found in DevTools' Network log if it was open when they were sent: open DevTools (F12) on this tab to look there."}{' '}
+                  It returned {result.entry.status} in {result.entry.ms} ms.
+                </>
+              )}{' '}
               <button type="button" className="link" onClick={() => void run(result.request)}>
                 Send it again
               </button>

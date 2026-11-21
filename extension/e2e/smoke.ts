@@ -408,12 +408,18 @@ async function main() {
     'users?limit=2',
   ]);
 
-  // Past responses are read back from DevTools' Network log; without DevTools open
-  // there is none, so the drawer says how to keep them and offers to send again.
-  await history.first().click();
+  // Past responses are saved with the history: picking one shows it again, without sending it.
   const reloadedDrawer = page.getByRole('region', { name: 'API console' });
-  await reloadedDrawer.getByText('Open DevTools (F12) on this tab').waitFor();
-  await reloadedDrawer.getByRole('button', { name: 'Send it again' }).waitFor();
+  const sentBefore = consoleRequests.length;
+  await history.last().click();
+  await reloadedDrawer.getByText('200 OK').waitFor();
+  await reloadedDrawer.getByText('"ada@acme.com"').waitFor();
+  await history.first().click();
+  await reloadedDrawer
+    .getByRole('alert')
+    .getByText('name: The field cannot be left blank')
+    .waitFor();
+  assert.equal(consoleRequests.length, sentBefore, 'picking from the history sends nothing');
 
   // Suggestions come from the API reference, with IDs from the page filled in.
   const USER = '00u1abcdefghijklmnop';

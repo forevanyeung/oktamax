@@ -143,11 +143,11 @@ small Postman: a prompt that sends requests to this org's API with your session.
   `Link` header page by page until the last one; Cancel stops it), or copy this page to the
   clipboard. Every field is a column, at any depth (`credentials.provider.type`), arrays are kept as
   JSON, and `_links` / `_embedded` are left out.
-- **History** keeps the last 100 requests (in `chrome.storage.local`). Click one to load it and
-  see its response, ▶ to send it again, or press ↑ / ↓ at the prompt. Only the requests are kept:
-  past responses are read back from DevTools' Network log, where the console's requests show up
-  (tagged with an `X-Oktamax-Request-Id` header). Open DevTools on the tab before sending to keep
-  them, and turn on Preserve log to keep them across page loads. Drag the drawer's top edge to resize it, or expand
+- **History** keeps the last 100 requests, and the responses to the last 30 (in
+  `chrome.storage.local`). Click one to load it and see its response, ▶ to send it again, or press
+  ↑ / ↓ at the prompt. Older responses are read back from DevTools' Network log, where the
+  console's requests show up (tagged with an `X-Oktamax-Request-Id` header), if DevTools was open
+  when they were sent. Drag the drawer's top edge to resize it, or expand
   it as tall as it goes with the button next to ×, by double-clicking that edge, or by pressing
   `Ctrl` + `` ` `` twice quickly.
 
@@ -550,7 +550,7 @@ extension/src/
   chat/              the assistant panel (assistant-ui), page context, resuming after navigation
   console/           the API console drawer: requests, history, endpoint suggestions, JSON tree
                      and table views
-  devtools/          loaded while DevTools is open: finds the console's past responses in its Network log
+  devtools/          loaded while DevTools is open: finds the console's older responses in its Network log
   content/
     index.tsx        entry point: mounts the dialog host and starts the scanner
     theme.iife.ts    turns dark mode on and off with the setting
