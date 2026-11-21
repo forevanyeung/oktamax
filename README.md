@@ -768,8 +768,8 @@ Then:
    (a publisher can have only one). Note the publisher ID from **Publisher > Settings**.
 2. In the repository settings, create the `chrome-web-store` environment, optionally with
    a deployment rule allowing the `main` branch (Promote release runs from it), and give it
-   these variables. Required reviewers would also
-   hold each scheduled store check in Promote release for approval.
+   these variables. Required reviewers would also hold each scheduled store check in Promote
+   release for approval.
    - `GCP_WORKLOAD_IDENTITY_PROVIDER`:
      `projects/<project number>/locations/global/workloadIdentityPools/github/providers/oktamax`
    - `GCP_SERVICE_ACCOUNT`: `chrome-web-store@<project>.iam.gserviceaccount.com`
