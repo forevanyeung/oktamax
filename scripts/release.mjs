@@ -3,6 +3,7 @@
  * Works out the next release of the extension or the chat server: its version, tag and notes.
  *
  *   node scripts/release.mjs <extension|server> [auto|patch|minor|major] [--write] [--notes <file>]
+ *   node scripts/release.mjs <extension|server> --at <tag> [--since <tag>] [--notes <file>]
  *
  * The two are versioned separately and tagged `extension-v<version>` and `server-v<version>`.
  * The changes in a release are the pull requests merged into main since the previous tag of the
@@ -15,9 +16,14 @@
  * - minor: a feature: a `feat/...` branch, or a `feat:` title.
  * - patch: anything else.
  *
- * Prints `version=`, `tag=`, `previous=` and `bump=` lines (for $GITHUB_OUTPUT). `--write` sets
- * the new version in the component's package.json and package-lock.json; `--notes` writes the
- * release notes to a file.
+ * Prints `version=`, `tag=`, `previous=`, `bump=`, `changes=` and `title=` lines (for
+ * $GITHUB_OUTPUT). `--write` sets the new version in the component's package.json and
+ * package-lock.json (the nightly build does this without committing it: tags hold the versions);
+ * `--notes` writes the release notes to a file.
+ *
+ * `--at <tag>` describes a release that already exists instead of the next one, with the changes
+ * since `--since <tag>` (by default its previous tag). Promoting a nightly to a full release uses
+ * it for notes that cover everything since the last full release.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -50,12 +56,15 @@ const flag = (name) => {
   return value ?? '';
 };
 const notesFile = flag('--notes');
+const at = flag('--at') || undefined;
+const since = flag('--since') || undefined;
 const write = args.includes('--write');
 const [name, requested = 'auto'] = args.filter((a) => !a.startsWith('--'));
 const component = COMPONENTS[name];
-if (!component || ![...BUMPS, 'auto'].includes(requested)) {
+if (!component || ![...BUMPS, 'auto'].includes(requested) || (at && write)) {
   console.error(
-    'Usage: release.mjs <extension|server> [auto|patch|minor|major] [--write] [--notes <file>]',
+    'Usage: release.mjs <extension|server> [auto|patch|minor|major] [--write] [--notes <file>]\n' +
+      '       release.mjs <extension|server> --at <tag> [--since <tag>] [--notes <file>]',
   );
   process.exit(2);
 }
@@ -74,9 +83,16 @@ const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
 const current = pkg.version;
 const prefix = `${name}-v`;
 
+if (at && (!at.startsWith(prefix) || !tryGit('rev-parse', '-q', '--verify', `refs/tags/${at}`))) {
+  console.error(`${at} isn't a ${name} tag`);
+  process.exit(1);
+}
+const head = at ?? 'HEAD';
+
 // The previous release: the newest tag of this component on this branch.
-const previous = tryGit('describe', '--tags', '--abbrev=0', `--match=${prefix}*`, 'HEAD');
-const range = previous ? `${previous}..HEAD` : 'HEAD';
+const previous =
+  since ?? tryGit('describe', '--tags', '--abbrev=0', `--match=${prefix}*`, at ? `${at}^` : 'HEAD');
+const range = previous ? `${previous}..${head}` : head;
 
 // Pull requests (merge commits) and direct commits on main, newest first, that touched the
 // component. Commits are separated by NUL, fields by \x1f.
@@ -127,7 +143,7 @@ const compare = (a, b) => {
 };
 
 // Raising the oldest peer this side works with is a breaking change for it.
-const peerMinimum = minimumAt(undefined, component.peerMinimum);
+const peerMinimum = minimumAt(at, component.peerMinimum);
 const peerMinimumBefore = previous && minimumAt(previous, component.peerMinimum);
 const droppedPeers =
   peerMinimumBefore && peerMinimum && compare(peerMinimum, peerMinimumBefore) > 0;
@@ -144,6 +160,7 @@ const bump =
 // The first release is the version already in package.json; after that, bump from the last tag.
 const base = previous ? previous.slice(prefix.length) : undefined;
 const next = (() => {
+  if (at) return at.slice(prefix.length);
   if (!base) return requested === 'auto' ? current : increment(current, bump);
   return increment(base, bump);
 })();
@@ -154,7 +171,7 @@ function increment(version, by) {
   return `${major}.${minor}.${patch + 1}`;
 }
 const tag = `${prefix}${next}`;
-if (tryGit('rev-parse', '-q', '--verify', `refs/tags/${tag}`)) {
+if (!at && tryGit('rev-parse', '-q', '--verify', `refs/tags/${tag}`)) {
   console.error(`${tag} already exists`);
   process.exit(1);
 }
@@ -210,4 +227,5 @@ console.log(`version=${next}`);
 console.log(`tag=${tag}`);
 console.log(`previous=${previous ?? ''}`);
 console.log(`bump=${base ? bump : 'initial'}`);
+console.log(`changes=${changes.length}`);
 console.log(`title=${component.title} ${next}`);
