@@ -687,7 +687,9 @@ bump on `auto`, or force `patch`, `minor` or `major`. It:
    branch, **patch** otherwise. A change is breaking when its description says `BREAKING CHANGE`,
    its branch or title has a `!` (`feat!/...`), or it raises the other side's minimum in
    `shared/src/version.ts`. The very first release keeps the version already in `package.json`.
-2. Commits the new version to `package.json`, tags that commit, and pushes both to main.
+2. Opens a pull request that sets the new version in `package.json`, merges it (main only takes
+   pull requests), and tags the merge commit. This needs **Allow GitHub Actions to create and
+   approve pull requests** turned on under Settings → Actions → General.
 3. Creates a GitHub **pre-release** whose notes list those pull requests, grouped into breaking
    changes, features, fixes and the rest, and which versions of the other side it works with.
 4. For the extension: builds it, attaches the zip to the release, uploads it to the Chrome Web
