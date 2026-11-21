@@ -408,6 +408,13 @@ async function main() {
     'users?limit=2',
   ]);
 
+  // Past responses are read back from DevTools' Network log; without DevTools open
+  // there is none, so the drawer says how to keep them and offers to send again.
+  await history.first().click();
+  const reloadedDrawer = page.getByRole('region', { name: 'API console' });
+  await reloadedDrawer.getByText('Open DevTools (F12) on this tab').waitFor();
+  await reloadedDrawer.getByRole('button', { name: 'Send it again' }).waitFor();
+
   // Suggestions come from the API reference, with IDs from the page filled in.
   const USER = '00u1abcdefghijklmnop';
   await page.goto(`${ORIGIN}/admin/user/profile/view/${USER}#tab-account`);

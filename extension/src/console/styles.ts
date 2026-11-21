@@ -58,6 +58,8 @@ export const consoleStyles = `
 .spacer { flex: 1; }
 
 .drawer button { border: 0; background: none; cursor: pointer; }
+.drawer button.link { padding: 0; font: inherit; color: var(--blue); }
+.drawer button.link:hover { text-decoration: underline; }
 .drawer button:disabled { opacity: 0.5; cursor: default; }
 .drawer button:focus-visible, .drawer input:focus-visible, .drawer select:focus-visible,
 .drawer textarea:focus-visible { outline: none; box-shadow: var(--focus) 0 0 0 3px; }

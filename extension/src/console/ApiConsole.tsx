@@ -12,7 +12,16 @@ import { timeAgo } from './format';
 import { setDrawerInset } from './inset';
 import { setConsoleHandler } from './remote';
 import { Prompt, type PromptHandle } from './Prompt';
-import { joinUrl, send, splitUrl, type ApiRequest, type ApiResponse, type Param } from './request';
+import { pastResponse } from './network';
+import {
+  joinUrl,
+  send,
+  splitUrl,
+  toResponse,
+  type ApiRequest,
+  type ApiResponse,
+  type Param,
+} from './request';
 import { ResponseView } from './ResponseView';
 import { docsUrl, endpointFor, objectPath, type Endpoint, type QueryParam } from './suggest';
 import { addToHistory, loadState, saveState, type ConsoleState, type HistoryEntry } from './store';
@@ -21,7 +30,11 @@ type Result =
   | { status: 'idle' }
   | { status: 'sending'; request: ApiRequest; stepUp?: boolean }
   | { status: 'done'; request: ApiRequest; response: ApiResponse; id: number }
-  | { status: 'error'; request: ApiRequest; message: string };
+  | { status: 'error'; request: ApiRequest; message: string }
+  /** A history entry's response, being looked up in DevTools' Network log. */
+  | { status: 'looking'; request: ApiRequest; entryId: string }
+  /** A history entry whose response isn't in the Network log. */
+  | { status: 'gone'; request: ApiRequest; entry: HistoryEntry; devtools: boolean };
 
 /** The page's objects, kept up to date as the admin console navigates. */
 function usePageContext(active: boolean): PageContext {
@@ -413,7 +426,7 @@ const HistoryList = ({
             <button
               type="button"
               className="history-item"
-              title={`${entry.method} ${entry.url}\nClick to load, ▶ to send again`}
+              title={`${entry.method} ${entry.url}\nClick to load it and its response, ▶ to send again`}
               onClick={() => onLoad(entry)}
             >
               <span className={`method m-${entry.method}`}>{entry.method}</span>
@@ -587,15 +600,18 @@ export const ApiConsole = () => {
       return new Error(`The path has placeholders this page can't fill: ${names}`);
     }
     setResult({ status: 'sending', request });
+    // Tags the request, so its response can be found in DevTools' Network log later.
+    const id = crypto.randomUUID();
     const entry = (status: number, ms: number): HistoryEntry => ({
       ...request,
-      id: crypto.randomUUID(),
+      id,
       status,
       ms,
       at: Date.now(),
     });
     try {
       const response = await send(request, {
+        id,
         onStepUp: () => setResult({ status: 'sending', request, stepUp: true }),
       });
       setResult({ status: 'done', request, response, id: ++responses.current });
@@ -622,6 +638,22 @@ export const ApiConsole = () => {
     if (sendNow) void run(request);
   };
   const openUrl = (url: string) => load({ method: 'GET', url, body: '' }, true);
+
+  /** Loads a history entry into the prompt and shows its response, from DevTools' Network log. */
+  const loadPast = async (entry: HistoryEntry) => {
+    load(entry);
+    const request = { method: entry.method, url: entry.url, body: entry.body };
+    setResult({ status: 'looking', request, entryId: entry.id });
+    const past = await pastResponse(entry.id);
+    const next: Result =
+      past.state === 'found'
+        ? { status: 'done', request, response: toResponse(past.entry), id: ++responses.current }
+        : { status: 'gone', request, entry, devtools: past.state === 'missing' };
+    // Unless something else was sent or picked meanwhile.
+    setResult((current) =>
+      current.status === 'looking' && current.entryId === entry.id ? next : current,
+    );
+  };
   remote.current = (request) => {
     update({ open: true });
     load(request);
@@ -725,7 +757,7 @@ export const ApiConsole = () => {
       <div className="drawer-main">
         <HistoryList
           history={state.history}
-          onLoad={(entry) => load(entry)}
+          onLoad={(entry) => void loadPast(entry)}
           onRun={(entry) => load(entry, true)}
           onClear={() => update({ history: [] })}
         />
@@ -832,6 +864,22 @@ export const ApiConsole = () => {
               {result.stepUp
                 ? `This is a protected action. Verify it's you in the pop-up to send ${result.request.method} ${result.request.url}…`
                 : `Sending ${result.request.method} ${result.request.url}…`}
+            </p>
+          )}
+          {result.status === 'looking' && (
+            <p className="hint placeholder">Looking for this response in DevTools' Network log…</p>
+          )}
+          {result.status === 'gone' && (
+            <p className="hint placeholder">
+              {result.devtools
+                ? "This response isn't in DevTools' Network log any more: it was sent before DevTools opened, or the log was cleared (turn on Preserve log to keep it across page loads)."
+                : "Responses are read back from DevTools' Network log. Open DevTools (F12) on this tab, then send the request again to see its response here later."}{' '}
+              {result.entry.status
+                ? `It returned ${result.entry.status} in ${result.entry.ms} ms.`
+                : ''}{' '}
+              <button type="button" className="link" onClick={() => void run(result.request)}>
+                Send it again
+              </button>
             </p>
           )}
           {result.status === 'error' && (
