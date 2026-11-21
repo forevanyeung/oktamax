@@ -12,7 +12,6 @@ import { timeAgo } from './format';
 import { setDrawerInset } from './inset';
 import { setConsoleHandler } from './remote';
 import { Prompt, type PromptHandle } from './Prompt';
-import { pastResponse } from './network';
 import {
   joinUrl,
   send,
@@ -42,10 +41,10 @@ type Result =
   | { status: 'sending'; request: ApiRequest; stepUp?: boolean }
   | { status: 'done'; request: ApiRequest; response: ApiResponse; id: number }
   | { status: 'error'; request: ApiRequest; message: string }
-  /** A history entry's response, being loaded, or looked up in DevTools' Network log. */
+  /** A history entry's saved response, being loaded. */
   | { status: 'looking'; request: ApiRequest; entryId: string }
-  /** A history entry whose response isn't saved, nor in the Network log. */
-  | { status: 'gone'; request: ApiRequest; entry: HistoryEntry; devtools: boolean };
+  /** A history entry whose response isn't saved. */
+  | { status: 'gone'; request: ApiRequest; entry: HistoryEntry };
 
 /** The page's objects, kept up to date as the admin console navigates. */
 function usePageContext(active: boolean): PageContext {
@@ -623,8 +622,6 @@ export const ApiConsole = () => {
       return new Error(`The path has placeholders this page can't fill: ${names}`);
     }
     setResult({ status: 'sending', request });
-    // Tags the request, so its response can be found in DevTools' Network log once it's no
-    // longer saved.
     const id = crypto.randomUUID();
     const entry = (status: number, ms: number, saved = false): HistoryEntry => ({
       ...request,
@@ -636,7 +633,6 @@ export const ApiConsole = () => {
     });
     try {
       const response = await send(request, {
-        id,
         onStepUp: () => setResult({ status: 'sending', request, stepUp: true }),
       });
       setResult({ status: 'done', request, response, id: ++responses.current });
@@ -669,20 +665,15 @@ export const ApiConsole = () => {
   };
   const openUrl = (url: string) => load({ method: 'GET', url, body: '' }, true);
 
-  /**
-   * Loads a history entry into the prompt and shows its response: saved, or
-   * for an older one, from DevTools' Network log.
-   */
+  /** Loads a history entry into the prompt and shows its saved response. */
   const loadPast = async (entry: HistoryEntry) => {
     load(entry);
     const request = { method: entry.method, url: entry.url, body: entry.body };
     setResult({ status: 'looking', request, entryId: entry.id });
     const saved = entry.saved ? await loadResponse(entry.id) : undefined;
-    const past = saved ? undefined : await pastResponse(entry.id);
-    const found = saved ?? (past?.state === 'found' ? past.entry : undefined);
-    const next: Result = found
-      ? { status: 'done', request, response: toResponse(found), id: ++responses.current }
-      : { status: 'gone', request, entry, devtools: past?.state === 'missing' };
+    const next: Result = saved
+      ? { status: 'done', request, response: toResponse(saved), id: ++responses.current }
+      : { status: 'gone', request, entry };
     // Unless something else was sent or picked meanwhile.
     setResult((current) =>
       current.status === 'looking' && current.entryId === entry.id ? next : current,
@@ -907,10 +898,7 @@ export const ApiConsole = () => {
                 "This request didn't get a response."
               ) : (
                 <>
-                  Only the last {RESPONSE_LIMIT} responses are kept, and this one isn't among them
-                  {result.devtools
-                    ? ", or in DevTools' Network log (it was sent before DevTools opened, or the log was cleared)."
-                    : ". Older ones can be found in DevTools' Network log if it was open when they were sent: open DevTools (F12) on this tab to look there."}{' '}
+                  Only the last {RESPONSE_LIMIT} responses are kept, and this one isn't among them.
                   It returned {result.entry.status} in {result.entry.ms} ms.
                 </>
               )}{' '}

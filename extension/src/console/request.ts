@@ -4,7 +4,6 @@
  * session, to the org the console is open on.
  */
 import { nextLink } from '../okta/api';
-import { REQUEST_ID_HEADER } from './network';
 
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 export type Method = (typeof METHODS)[number];
@@ -167,8 +166,6 @@ function stepUp(challenge: StepUpChallenge): Promise<boolean> {
 }
 
 export interface SendOptions {
-  /** Tags the request so its response can be found again in DevTools' Network log (`network.ts`). */
-  id?: string;
   /** Called when Okta asks the admin to verify before it will carry out the request. */
   onStepUp?: () => void;
 }
@@ -179,24 +176,23 @@ export interface SendOptions {
  * don't, the response is Okta's original 401.
  */
 export async function send(request: ApiRequest, options: SendOptions = {}): Promise<ApiResponse> {
-  const response = await sendOnce(request, options.id);
+  const response = await sendOnce(request);
   const challenge = stepUpChallenge(
     response.status,
     response.headers.find(([name]) => name.toLowerCase() === 'www-authenticate')?.[1] ?? null,
   );
   if (!challenge) return response;
   options.onStepUp?.();
-  return (await stepUp(challenge)) ? sendOnce(request, options.id) : response;
+  return (await stepUp(challenge)) ? sendOnce(request) : response;
 }
 
-async function sendOnce({ method, url, body }: ApiRequest, id?: string): Promise<ApiResponse> {
+async function sendOnce({ method, url, body }: ApiRequest): Promise<ApiResponse> {
   const target = resolveUrl(url, location.origin);
   const headers: Record<string, string> = { Accept: 'application/json' };
   const hasBody = method !== 'GET' && body.trim() !== '';
   if (hasBody) headers['Content-Type'] = 'application/json';
   const token = method === 'GET' ? undefined : xsrfToken();
   if (token) headers['X-Okta-XsrfToken'] = token;
-  if (id) headers[REQUEST_ID_HEADER] = id;
 
   const started = performance.now();
   const res = await fetch(target, {
@@ -215,7 +211,7 @@ async function sendOnce({ method, url, body }: ApiRequest, id?: string): Promise
   });
 }
 
-/** A response, from `fetch` or from DevTools' Network log, as the console shows it. */
+/** A response, just received or saved with the history, as the console shows it. */
 export function toResponse(
   raw: Pick<ApiResponse, 'status' | 'statusText' | 'headers' | 'text' | 'ms'>,
 ): ApiResponse {

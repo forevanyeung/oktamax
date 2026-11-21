@@ -55,8 +55,6 @@ export default defineManifest(({ command }) => ({
     service_worker: 'src/background/index.ts',
     type: 'module',
   },
-  // Loaded while DevTools is open on a tab: the API console's past responses come from its Network log.
-  devtools_page: 'src/devtools/index.html',
   action: {
     default_icon: icons,
     default_popup: 'src/popup/index.html',

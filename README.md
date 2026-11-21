@@ -145,9 +145,7 @@ small Postman: a prompt that sends requests to this org's API with your session.
   JSON, and `_links` / `_embedded` are left out.
 - **History** keeps the last 100 requests, and the responses to the last 30 (in
   `chrome.storage.local`). Click one to load it and see its response, ▶ to send it again, or press
-  ↑ / ↓ at the prompt. Older responses are read back from DevTools' Network log, where the
-  console's requests show up (tagged with an `X-Oktamax-Request-Id` header), if DevTools was open
-  when they were sent. Drag the drawer's top edge to resize it, or expand
+  ↑ / ↓ at the prompt. Drag the drawer's top edge to resize it, or expand
   it as tall as it goes with the button next to ×, by double-clicking that edge, or by pressing
   `Ctrl` + `` ` `` twice quickly.
 
@@ -550,7 +548,6 @@ extension/src/
   chat/              the assistant panel (assistant-ui), page context, resuming after navigation
   console/           the API console drawer: requests, history, endpoint suggestions, JSON tree
                      and table views
-  devtools/          loaded while DevTools is open: finds the console's older responses in its Network log
   content/
     index.tsx        entry point: mounts the dialog host and starts the scanner
     theme.iife.ts    turns dark mode on and off with the setting
