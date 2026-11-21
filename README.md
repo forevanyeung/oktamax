@@ -692,8 +692,9 @@ bump on `auto`, or force `patch`, `minor` or `major`. It:
    approve pull requests** turned on under Settings → Actions → General.
 3. Creates a GitHub **pre-release** whose notes list those pull requests, grouped into breaking
    changes, features, fixes and the rest, and which versions of the other side it works with.
-4. For the extension: builds it, attaches the zip to the release, uploads it to the Chrome Web
-   Store and submits it for review (`release-extension.yml`).
+4. For the extension: builds it, uploads it to the Chrome Web Store and submits it for review
+   (`release-extension.yml`). Releases are immutable once published, so an extension release is
+   created as a draft and only published once its zip is attached.
 
 A release becomes a **full release** once it's out. The **Promote release** workflow
 (`promote-release.yml`) checks the Chrome Web Store every four hours and promotes the extension
