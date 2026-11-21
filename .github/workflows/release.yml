@@ -90,10 +90,14 @@ jobs:
       - name: Create the pre-release
         env:
           GH_TOKEN: ${{ github.token }}
+          COMPONENT: ${{ inputs.component }}
           TAG: ${{ steps.next.outputs.tag }}
           TITLE: ${{ steps.next.outputs.title }}
         run: |
-          gh release create "$TAG" --verify-tag --prerelease --title "$TITLE" \
+          # Releases are immutable once published, so an extension release starts as a draft:
+          # release-extension.yml attaches the zip and then publishes it.
+          draft=$([[ "$COMPONENT" == extension ]] && echo --draft || true)
+          gh release create "$TAG" --verify-tag --prerelease $draft --title "$TITLE" \
             --notes-file "$RUNNER_TEMP/notes.md"
 
   # Tags pushed with the workflow's token don't start other workflows, so call the store release.

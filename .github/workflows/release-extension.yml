@@ -4,8 +4,9 @@ name: Release extension
 # calls it for each extension release; pushing a tag `extension-v<version>` (matching
 # extension/package.json) by hand does the same. Either submits it for review and attaches the zip
 # to the GitHub release; running it by hand can stage it instead, or only upload the draft. Once
-# the store publishes the version, promote-release.yml turns its pre-release into a full one. Auth is keyless: GitHub's OIDC token is exchanged through Workload Identity
-# Federation for a short-lived access token of the service account added to the publisher.
+# the store publishes the version, promote-release.yml turns its pre-release into a full one. Auth
+# is keyless: GitHub's OIDC token is exchanged through Workload Identity Federation for a
+# short-lived access token of the service account added to the publisher.
 
 on:
   push:
@@ -77,7 +78,8 @@ jobs:
           path: oktamax-${{ steps.version.outputs.version }}.zip
           if-no-files-found: error
 
-  # The zip goes on the GitHub release too, for installs outside the store.
+  # The zip goes on the GitHub release too, for installs outside the store. Published releases are
+  # immutable, so release.yml leaves an extension release as a draft until the zip is on it.
   attach:
     needs: build
     if: needs.build.outputs.tag != ''
@@ -93,10 +95,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.tag }}
         run: |
-          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release upload "$TAG" oktamax-*.zip --clobber -R "$GITHUB_REPOSITORY"
-          else
+          if ! draft=$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null); then
             echo "No GitHub release for $TAG: nothing to attach to."
+          elif [[ "$draft" != true ]]; then
+            echo "::warning::$TAG is already published, so it's immutable and can't take the zip."
+          else
+            gh release upload "$TAG" oktamax-*.zip -R "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false
           fi
 
   publish:
