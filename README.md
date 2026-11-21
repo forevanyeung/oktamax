@@ -678,31 +678,44 @@ first run downloads Python and the package.
 ### Releasing
 
 The extension and the chat server are released separately, each with its own
-[semantic version](https://semver.org) and tag (`extension-v1.2.0`, `server-v1.3.1`). Run the
-**Release** workflow (`.github/workflows/release.yml`) from main, pick the component, and leave the
-bump on `auto`, or force `patch`, `minor` or `major`. It:
+[semantic version](https://semver.org) and tag (`extension-v1.2.0`, `server-v1.3.1`). Releasing is
+two steps: every change to main becomes a **nightly**, and you **promote** the nightly you want.
 
-1. Works out the next version from the pull requests merged since that component's last release
-   that touched its code (or `shared/`): **major** for a breaking change, **minor** for a `feat/`
-   branch, **patch** otherwise. A change is breaking when its description says `BREAKING CHANGE`,
-   its branch or title has a `!` (`feat!/...`), or it raises the other side's minimum in
-   `shared/src/version.ts`. The very first release keeps the version already in `package.json`.
-2. Opens a pull request that sets the new version in `package.json`, merges it (main only takes
-   pull requests), and tags the merge commit. This needs **Allow GitHub Actions to create and
-   approve pull requests** turned on under Settings → Actions → General.
-3. Creates a GitHub **pre-release** whose notes list those pull requests, grouped into breaking
-   changes, features, fixes and the rest, and which versions of the other side it works with.
-4. For the extension: builds it, uploads it to the Chrome Web Store and submits it for review
-   (`release-extension.yml`). Releases are immutable once published, so an extension release is
-   created as a draft and only published once its zip is attached.
+**Nightlies** (`.github/workflows/nightly.yml`). Each push to main that touches the extension or the
+server (or `shared/`, which both build in) gets, for each component it changed:
 
-A release becomes a **full release** once it's out. The **Promote release** workflow
-(`promote-release.yml`) checks the Chrome Web Store every four hours and promotes the extension
-release whose version the store has published. Promote a server release once it's deployed: run
-the workflow with its tag, or untick "pre-release" on GitHub.
+1. The next version, worked out from the pull requests merged since that component's last tag that
+   touched its code: **major** for a breaking change, **minor** for a `feat/` branch, **patch**
+   otherwise. A change is breaking when its description says `BREAKING CHANGE`, its branch or title
+   has a `!` (`feat!/...`), or it raises the other side's minimum in `shared/src/version.ts`. The
+   very first release keeps the version already in `package.json`.
+2. Tests and a build with that version. Versions live in the tags: the build sets the version in
+   `package.json` without committing it, so the one checked in there is only a starting point.
+3. A tag on the commit and a GitHub **pre-release** whose notes list those pull requests, grouped
+   into breaking changes, features, fixes and the rest, and which versions of the other side it
+   works with. The extension's pre-release has the store-ready zip attached (load it unpacked to try
+   a nightly); the server's image is pushed to `ghcr.io/<owner>/oktamax-server:<version>`.
+
+Pushes that land while a nightly is running are batched into the next one. Running the workflow by
+hand builds a nightly from main's head and can force a `patch`, `minor` or `major` bump.
+
+**Promoting** (`.github/workflows/promote-release.yml`). Run **Promote release** from main, pick the
+component, and leave the version empty for its newest nightly, or name an older one (`1.2.3`).
+
+- **Extension:** uploads that nightly's zip, as built, to the Chrome Web Store and submits it for
+  review (or stages it on approval, or only uploads the draft). Its pre-release becomes a full
+  release once the store publishes it: the workflow checks the store every four hours. The store
+  only takes versions newer than the one it has.
+- **Server:** tags the image `latest` and makes the nightly a full release. Deploy it from the
+  image.
+
+A full release's notes are rewritten to cover everything since the component's previous full
+release (`scripts/finalize-release.sh`), not just the changes since the nightly before it.
+Nightlies that were never promoted stay pre-releases.
 
 To try the version and notes locally: `node scripts/release.mjs server --notes notes.md` (add
-`--write` to also set the version in `package.json`).
+`--write` to also set the version in `package.json`, or `--at <tag> --since <tag>` for an existing
+release's notes).
 
 #### Keeping the extension and server compatible
 
@@ -720,12 +733,6 @@ When a change breaks the contract between them, raise the minimum in the same pu
 release the side the others depend on first: the server, if the extension needs something new from
 it. Versions from before they were reported count as 0.1.0, so raising either minimum past 0.1.0
 also cuts off peers that don't report one.
-
-#### Releasing by hand
-
-Pushing a tag `extension-v<version>` that matches `extension/package.json` also runs
-`release-extension.yml`. Running that workflow by hand can stage the extension on approval
-(publish later from the dashboard) or only upload the draft.
 
 #### Chrome Web Store credentials
 
@@ -760,8 +767,8 @@ Then:
    **Account**, add `chrome-web-store@<project>.iam.gserviceaccount.com` as the service account
    (a publisher can have only one). Note the publisher ID from **Publisher > Settings**.
 2. In the repository settings, create the `chrome-web-store` environment, optionally with
-   deployment rules allowing the `main` branch (the Release and Promote release workflows run
-   from it) and `extension-v*` tags, and give it these variables. Required reviewers would also
+   a deployment rule allowing the `main` branch (Promote release runs from it), and give it
+   these variables. Required reviewers would also
    hold each scheduled store check in Promote release for approval.
    - `GCP_WORKLOAD_IDENTITY_PROVIDER`:
      `projects/<project number>/locations/global/workloadIdentityPools/github/providers/oktamax`

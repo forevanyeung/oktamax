@@ -1,19 +1,38 @@
 name: Promote release
 
-# Releases start as GitHub pre-releases (release.yml) and become full releases once they're out:
-# - Extension: when the Chrome Web Store publishes the version, after review. Checked every few
-#   hours; earlier pre-releases the store skipped stay pre-releases.
-# - Server: by hand, once it's deployed: run this with its tag (or untick "pre-release" on GitHub).
+# Takes a nightly (a pre-release from nightly.yml) to production. Run it by hand with the component
+# and, optionally, the version; it defaults to the component's newest nightly.
+# - Extension: uploads the nightly's zip, unchanged, to the Chrome Web Store and submits it for
+#   review. Its pre-release becomes a full release once the store publishes it: checked every few
+#   hours, below. Nightlies the store never got stay pre-releases.
+# - Server: tags its image `latest` and makes it a full release. Deploy it from the image.
+# A full release's notes cover everything since the component's last full release
+# (scripts/finalize-release.sh).
+#
+# Store auth is keyless: GitHub's OIDC token is exchanged through Workload Identity Federation for
+# a short-lived access token of the service account added to the publisher.
 
 on:
   schedule:
     - cron: '23 */4 * * *'
   workflow_dispatch:
     inputs:
-      tag:
-        description: Release to promote, like server-v1.2.0 (empty to check the Chrome Web Store)
+      component:
+        description: What to promote
+        type: choice
+        options: [extension, server]
+      version:
+        description: Version to promote, like 1.2.3 (empty for the newest nightly)
         type: string
         required: false
+      store:
+        description: 'Extension: after uploading to the Chrome Web Store'
+        type: choice
+        options:
+          - submit for review, publish on approval
+          - submit for review, stage on approval
+          - upload only
+        default: submit for review, publish on approval
 
 permissions:
   contents: write
@@ -23,32 +42,167 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  by-hand:
-    if: inputs.tag != ''
+  pick:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      version: ${{ steps.pick.outputs.version }}
     steps:
-      - name: Promote
+      - id: pick
+        name: Pick the nightly
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag }}
+          COMPONENT: ${{ inputs.component }}
+          VERSION: ${{ inputs.version }}
         run: |
-          [[ "$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isPrerelease -q .isPrerelease)" == true ]] \
-            || { echo "$TAG isn't a pre-release: nothing to do."; exit 0; }
-          # The extension is what most people install, so its releases are the repo's "latest".
-          latest=false; [[ "$TAG" == extension-v* ]] && latest=true
-          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --prerelease=false --latest=$latest
-          echo "Promoted $TAG to a full release." >> "$GITHUB_STEP_SUMMARY"
+          prefix="$COMPONENT-v"
+          if [[ -n "$VERSION" ]]; then
+            tag="$prefix${VERSION#v}"
+          else
+            tag=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts -L 1000 --json tagName,isPrerelease \
+              -q ".[] | select(.isPrerelease) | .tagName" | { grep "^$prefix" || true; } | sort -V | tail -1)
+            if [[ -z "$tag" ]]; then
+              echo "::error::No $COMPONENT nightlies to promote."
+              exit 1
+            fi
+          fi
+          if ! release=$(gh release view "$tag" -R "$GITHUB_REPOSITORY" --json isPrerelease,isDraft 2>/dev/null); then
+            echo "::error::No release $tag."
+            exit 1
+          fi
+          if [[ "$(jq -r .isDraft <<<"$release")" == true ]]; then
+            echo "::error::$tag is still a draft: its nightly didn't finish."
+            exit 1
+          fi
+          if [[ "$(jq -r .isPrerelease <<<"$release")" != true ]]; then
+            echo "::warning::$tag is already a full release."
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#"$prefix"}" >> "$GITHUB_OUTPUT"
+          echo "Promoting $tag" >> "$GITHUB_STEP_SUMMARY"
+
+  extension:
+    needs: pick
+    if: inputs.component == 'extension'
+    runs-on: ubuntu-latest
+    # Holds the variables below, and any required reviewers before a release goes out.
+    environment:
+      name: chrome-web-store
+      url: https://chromewebstore.google.com/detail/${{ vars.CWS_EXTENSION_ID }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ITEM: https://chromewebstore.googleapis.com/v2/publishers/${{ vars.CWS_PUBLISHER_ID }}/items/${{ vars.CWS_EXTENSION_ID }}
+      UPLOAD: https://chromewebstore.googleapis.com/upload/v2/publishers/${{ vars.CWS_PUBLISHER_ID }}/items/${{ vars.CWS_EXTENSION_ID }}
+      ZIP: oktamax-${{ needs.pick.outputs.version }}.zip
+    steps:
+      - name: Download the nightly's zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.pick.outputs.tag }}
+        run: gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$ZIP"
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          access_token_lifetime: 600s
+          create_credentials_file: false
+
+      - name: Upload
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          api() { curl -sS --fail-with-body -H "Authorization: Bearer $TOKEN" "$@"; }
+
+          response=$(api -X POST -T "$ZIP" "$UPLOAD:upload")
+          echo "$response"
+          state=$(jq -r .uploadState <<<"$response")
+
+          # Large packages are processed asynchronously.
+          for _ in $(seq 60); do
+            [[ "$state" == IN_PROGRESS || "$state" == UPLOAD_IN_PROGRESS ]] || break
+            sleep 10
+            response=$(api "$ITEM:fetchStatus")
+            state=$(jq -r .lastAsyncUploadState <<<"$response")
+          done
+
+          if [[ "$state" != SUCCEEDED ]]; then
+            echo "::error::Upload ended in state $state"
+            echo "$response"
+            exit 1
+          fi
+          echo "Uploaded ${{ needs.pick.outputs.version }} to the Chrome Web Store." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Submit for review
+        if: inputs.store != 'upload only'
+        env:
+          TOKEN: ${{ steps.auth.outputs.access_token }}
+          PUBLISH_TYPE: ${{ inputs.store == 'submit for review, stage on approval' && 'STAGED_PUBLISH' || 'DEFAULT_PUBLISH' }}
+        run: |
+          response=$(curl -sS --fail-with-body -X POST \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"publishType\": \"$PUBLISH_TYPE\"}" "$ITEM:publish")
+          echo "$response"
+          jq -r '.warningInfo.warnings[]? | "::warning::\(.reason): \(.description)"' <<<"$response"
+          echo "Submitted ${{ needs.pick.outputs.version }}: $(jq -r .state <<<"$response")" >> "$GITHUB_STEP_SUMMARY"
+
+  server:
+    needs: pick
+    if: inputs.component == 'server'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags and history, for the notes
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Tag the image latest
+        env:
+          VERSION: ${{ needs.pick.outputs.version }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/oktamax-server"
+          docker buildx imagetools create -t "$image:latest" "$image:$VERSION"
+          echo "\`$image:latest\` is now $VERSION." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Make it a full release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.pick.outputs.tag }}
+        run: scripts/finalize-release.sh "$TAG" | tee -a "$GITHUB_STEP_SUMMARY"
 
   chrome-web-store:
-    if: inputs.tag == ''
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
-    # Holds the store's variables (see release-extension.yml). Required reviewers on this
-    # environment would hold every scheduled check for approval.
+    # Holds the store's variables. Required reviewers on this environment would hold every
+    # scheduled check for approval.
     environment: chrome-web-store
     permissions:
       contents: write
       id-token: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags and history, for the notes
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - id: auth
         uses: google-github-actions/auth@v2
         with:
@@ -76,13 +230,8 @@ jobs:
           fi
           echo "Published in the Chrome Web Store: $version"
           tag="extension-v$version"
-          if ! prerelease=$(gh release view "$tag" -R "$GITHUB_REPOSITORY" --json isPrerelease -q .isPrerelease 2>/dev/null); then
+          if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "No GitHub release for $tag."
             exit 0
           fi
-          if [[ "$prerelease" != true ]]; then
-            echo "$tag is already a full release."
-            exit 0
-          fi
-          gh release edit "$tag" -R "$GITHUB_REPOSITORY" --prerelease=false --latest
-          echo "Promoted $tag: the Chrome Web Store published it." >> "$GITHUB_STEP_SUMMARY"
+          scripts/finalize-release.sh "$tag" | tee -a "$GITHUB_STEP_SUMMARY"

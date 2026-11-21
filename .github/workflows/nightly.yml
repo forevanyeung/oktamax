@@ -1,0 +1,156 @@
+name: Nightly
+
+# Every push to main that changes the extension or the chat server (or shared/, which both build
+# in) becomes a nightly of that component: its next version (scripts/release.mjs works it out from
+# the pull requests since its last tag), a build, a tag `<component>-v<version>` on the commit, and
+# a GitHub pre-release whose notes list those changes.
+# - Extension: the store-ready zip is attached to the pre-release.
+# - Server: the Docker image is pushed to ghcr.io/<owner>/oktamax-server:<version>.
+# Versions live in the tags, not in package.json: the build sets them without committing them.
+# Nothing reaches users until a nightly is promoted (promote-release.yml).
+#
+# Running it by hand builds a nightly from main's head, and can force the bump.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'extension/**'
+      - 'server/**'
+      - 'shared/**'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: What to build
+        type: choice
+        options: [extension, server]
+      bump:
+        description: 'Version bump (auto: major for breaking changes, minor for feat/ branches, else patch)'
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+
+permissions:
+  contents: write
+  packages: write
+
+# One at a time, so each nightly bumps from the one before it. A push that arrives while another is
+# queued replaces it; the nightly that runs then includes its changes.
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJSON(inputs.component && format('["{0}"]', inputs.component) || '["extension","server"]') }}
+    runs-on: ubuntu-latest
+    env:
+      COMPONENT: ${{ matrix.component }}
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Nightlies are built from main, not $GITHUB_REF_NAME"
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags and history, for the version and the notes
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - id: next
+        name: Work out the version and notes
+        env:
+          BUMP: ${{ inputs.bump || 'auto' }}
+        run: |
+          node scripts/release.mjs "$COMPONENT" "$BUMP" --write --notes "$RUNNER_TEMP/notes.md" | tee -a "$GITHUB_OUTPUT"
+          changes=$(grep '^changes=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2)
+          if [[ "$changes" == 0 && "$BUMP" == auto ]]; then
+            echo "No changes to the $COMPONENT since its last nightly." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            { echo "## $(grep '^title=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2-)"; echo; cat "$RUNNER_TEMP/notes.md"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.next.outputs.build == 'true'
+        run: npm ci
+      - if: steps.next.outputs.build == 'true'
+        run: npm test -w "@oktamax/$COMPONENT"
+      - if: steps.next.outputs.build == 'true'
+        run: npm run build -w "@oktamax/$COMPONENT"
+
+      - name: Zip the extension
+        if: steps.next.outputs.build == 'true' && matrix.component == 'extension'
+        run: |
+          cd extension/dist
+          zip -qr "$GITHUB_WORKSPACE/oktamax-${{ steps.next.outputs.version }}.zip" .
+          echo "ASSETS=$GITHUB_WORKSPACE/oktamax-${{ steps.next.outputs.version }}.zip" >> "$GITHUB_ENV"
+
+      - id: image
+        name: Name the server image
+        if: steps.next.outputs.build == 'true' && matrix.component == 'server'
+        env:
+          VERSION: ${{ steps.next.outputs.version }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/oktamax-server"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "tags=$image:$VERSION" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Docker image'
+            echo
+            echo '```sh'
+            echo "docker pull $image:$VERSION"
+            echo '```'
+          } >> "$RUNNER_TEMP/notes.md"
+      - if: steps.image.outputs.image
+        uses: docker/setup-buildx-action@v3
+      - if: steps.image.outputs.image
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push the server image
+        if: steps.image.outputs.image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.next.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+      - name: Tag the commit
+        if: steps.next.outputs.build == 'true'
+        env:
+          TAG: ${{ steps.next.outputs.tag }}
+          VERSION: ${{ steps.next.outputs.version }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TAG" -m "Nightly $COMPONENT $VERSION" "$GITHUB_SHA"
+          git push origin "$TAG"
+
+      # Releases are immutable once published; gh keeps it a draft until the zip is attached.
+      - name: Create the pre-release
+        if: steps.next.outputs.build == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.next.outputs.tag }}
+          TITLE: ${{ steps.next.outputs.title }}
+        run: |
+          gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$TITLE" \
+            --notes-file "$RUNNER_TEMP/notes.md" ${ASSETS:+"$ASSETS"}
