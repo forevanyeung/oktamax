@@ -675,48 +675,6 @@ checks four things: each admin's calls carry only their own token, only read too
 write tool call is refused, and only GETs reach Okta. It isn't part of `npm test`, because the
 first run downloads Python and the package.
 
-### Releasing
-
-The extension and the chat server are released separately, each with its own
-[semantic version](https://semver.org) and tag (`extension-v1.2.0`, `server-v1.3.1`). Releasing is
-two steps: every change to main becomes a **nightly**, and you **promote** the nightly you want.
-
-**Nightlies** (`.github/workflows/nightly.yml`). Each push to main that touches the extension or the
-server (or `shared/`, which both build in) gets, for each component it changed:
-
-1. The next version, worked out from the pull requests merged since that component's last tag that
-   touched its code: **major** for a breaking change, **minor** for a `feat/` branch, **patch**
-   otherwise. A change is breaking when its description says `BREAKING CHANGE`, its branch or title
-   has a `!` (`feat!/...`), or it raises the other side's minimum in `shared/src/version.ts`. The
-   very first release keeps the version already in `package.json`.
-2. Tests and a build with that version. Versions live in the tags: the build sets the version in
-   `package.json` without committing it, so the one checked in there is only a starting point.
-3. A tag on the commit and a GitHub **pre-release** whose notes list those pull requests, grouped
-   into breaking changes, features, fixes and the rest, and which versions of the other side it
-   works with. The extension's pre-release has the store-ready zip attached (load it unpacked to try
-   a nightly); the server's image is pushed to `ghcr.io/<owner>/oktamax-server:<version>`.
-
-Pushes that land while a nightly is running are batched into the next one. Running the workflow by
-hand builds a nightly from main's head and can force a `patch`, `minor` or `major` bump.
-
-**Promoting** (`.github/workflows/promote-release.yml`). Run **Promote release** from main, pick the
-component, and leave the version empty for its newest nightly, or name an older one (`1.2.3`).
-
-- **Extension:** uploads that nightly's zip, as built, to the Chrome Web Store and submits it for
-  review (or stages it on approval, or only uploads the draft). Its pre-release becomes a full
-  release once the store publishes it: the workflow checks the store every four hours. The store
-  only takes versions newer than the one it has.
-- **Server:** tags the image `latest` and makes the nightly a full release. Deploy it from the
-  image.
-
-A full release's notes are rewritten to cover everything since the component's previous full
-release (`scripts/finalize-release.sh`), not just the changes since the nightly before it.
-Nightlies that were never promoted stay pre-releases.
-
-To try the version and notes locally: `node scripts/release.mjs server --notes notes.md` (add
-`--write` to also set the version in `package.json`, or `--at <tag> --since <tag>` for an existing
-release's notes).
-
 #### Keeping the extension and server compatible
 
 Chrome updates the extension on its own schedule and each organization deploys the server on
@@ -733,50 +691,6 @@ When a change breaks the contract between them, raise the minimum in the same pu
 release the side the others depend on first: the server, if the extension needs something new from
 it. Versions from before they were reported count as 0.1.0, so raising either minimum past 0.1.0
 also cuts off peers that don't report one.
-
-#### Chrome Web Store credentials
-
-The workflow has no stored credentials. GitHub's OIDC token is exchanged through Workload Identity
-Federation for a 10-minute access token of a service account, which the store accepts because the
-account is added to the publisher. One-time setup, in a Google Cloud project:
-
-```sh
-PROJECT=my-project
-REPO=forevanyeung/oktamax
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
-
-gcloud services enable chromewebstore.googleapis.com iamcredentials.googleapis.com sts.googleapis.com --project $PROJECT
-gcloud iam service-accounts create chrome-web-store --project $PROJECT
-
-gcloud iam workload-identity-pools create github --location global --project $PROJECT
-gcloud iam workload-identity-pools providers create-oidc oktamax --location global --project $PROJECT \
-  --workload-identity-pool github \
-  --issuer-uri https://token.actions.githubusercontent.com \
-  --attribute-mapping 'google.subject=assertion.sub,attribute.repository=assertion.repository' \
-  --attribute-condition "assertion.repository == '$REPO'"
-
-# Only the publish job, which runs in the chrome-web-store environment, may act as the account.
-gcloud iam service-accounts add-iam-policy-binding chrome-web-store@$PROJECT.iam.gserviceaccount.com \
-  --project $PROJECT --role roles/iam.workloadIdentityUser \
-  --member "principal://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/subject/repo:$REPO:environment:chrome-web-store"
-```
-
-Then:
-
-1. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole/), under
-   **Account**, add `chrome-web-store@<project>.iam.gserviceaccount.com` as the service account
-   (a publisher can have only one). Note the publisher ID from **Publisher > Settings**.
-2. In the repository settings, create the `chrome-web-store` environment, optionally with
-   a deployment rule allowing the `main` branch (Promote release runs from it), and give it
-   these variables. Required reviewers would also hold each scheduled store check in Promote
-   release for approval.
-   - `GCP_WORKLOAD_IDENTITY_PROVIDER`:
-     `projects/<project number>/locations/global/workloadIdentityPools/github/providers/oktamax`
-   - `GCP_SERVICE_ACCOUNT`: `chrome-web-store@<project>.iam.gserviceaccount.com`
-   - `CWS_PUBLISHER_ID`, and `CWS_EXTENSION_ID` (the item's ID in the store)
-
-The item must already exist in the store, with its listing and privacy tabs filled in: the API
-updates an item, it doesn't create one.
 
 ### Testing against a real org
 
