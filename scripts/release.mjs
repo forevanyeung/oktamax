@@ -30,7 +30,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const COMPONENTS = {
   extension: {
-    title: 'Okta Max extension',
+    title: 'Extension',
     dir: 'extension',
     paths: ['extension', 'shared'],
     /** Raising this breaks older servers. */
@@ -38,7 +38,7 @@ const COMPONENTS = {
     peer: 'chat server',
   },
   server: {
-    title: 'Okta Max chat server',
+    title: 'Server',
     dir: 'server',
     paths: ['server', 'shared'],
     peerMinimum: 'MIN_EXTENSION_VERSION',
@@ -228,4 +228,4 @@ console.log(`tag=${tag}`);
 console.log(`previous=${previous ?? ''}`);
 console.log(`bump=${base ? bump : 'initial'}`);
 console.log(`changes=${changes.length}`);
-console.log(`title=${component.title} ${next}`);
+console.log(`title=${component.title} v${next}`);
