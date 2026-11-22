@@ -202,23 +202,31 @@ async function sendOnce({ method, url, body }: ApiRequest): Promise<ApiResponse>
     body: hasBody ? body : undefined,
   });
   const text = await res.text();
-  const ms = Math.round(performance.now() - started);
-
-  let json: unknown;
-  try {
-    json = text ? JSON.parse(text) : undefined;
-  } catch {
-    json = undefined;
-  }
-  const next = nextLink(res.headers.get('link'));
-  return {
+  return toResponse({
     status: res.status,
     statusText: res.statusText,
     headers: [...res.headers.entries()],
     text,
+    ms: Math.round(performance.now() - started),
+  });
+}
+
+/** A response, just received or saved with the history, as the console shows it. */
+export function toResponse(
+  raw: Pick<ApiResponse, 'status' | 'statusText' | 'headers' | 'text' | 'ms'>,
+): ApiResponse {
+  let json: unknown;
+  try {
+    json = raw.text ? JSON.parse(raw.text) : undefined;
+  } catch {
+    json = undefined;
+  }
+  const link = raw.headers.find(([name]) => name.toLowerCase() === 'link')?.[1] ?? null;
+  const next = nextLink(link);
+  return {
+    ...raw,
     json,
-    ms,
-    bytes: new TextEncoder().encode(text).length,
+    bytes: new TextEncoder().encode(raw.text).length,
     next: next && toConsoleUrl(next),
   };
 }

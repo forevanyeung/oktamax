@@ -6,7 +6,7 @@ import { csvFilename, flatten, toCsv } from '../csv';
 import { cell, formatBytes, isTable, oktaError, tableColumns, timeAgo } from '../format';
 import { cursorAt, keyAt, parseJson } from '../jsonDoc';
 import { joinUrl, resolveUrl, splitMethod, splitUrl, stepUpChallenge, stepUpUrl } from '../request';
-import { addToHistory, type HistoryEntry } from '../store';
+import { addToHistory, RESPONSE_LIMIT, savedIds, type HistoryEntry } from '../store';
 import {
   docsUrl,
   endpointFor,
@@ -137,6 +137,21 @@ describe('history', () => {
   it('moves a repeated request to the top', () => {
     const history = [entry('2', '/b'), entry('1', '/a')];
     expect(addToHistory(history, entry('3', '/a')).map((e) => e.id)).toEqual(['3', '2']);
+  });
+
+  it('keeps the responses of only the latest entries', () => {
+    const saved = (id: string) => ({ ...entry(id, `/${id}`), saved: true });
+    const history = Array.from({ length: RESPONSE_LIMIT }, (_, i) => saved(String(i)));
+    const next = addToHistory(history, saved('new'));
+    expect(next).toHaveLength(RESPONSE_LIMIT + 1);
+    expect(savedIds(next).size).toBe(RESPONSE_LIMIT);
+    expect(savedIds(next).has('new')).toBe(true);
+    expect(next.at(-1)).toEqual(entry(String(RESPONSE_LIMIT - 1), `/${RESPONSE_LIMIT - 1}`));
+  });
+
+  it("doesn't count entries without a saved response", () => {
+    const history = [entry('2', '/b'), { ...entry('1', '/a'), saved: true }];
+    expect(savedIds(addToHistory(history, entry('3', '/c')))).toEqual(new Set(['1']));
   });
 });
 

@@ -408,6 +408,19 @@ async function main() {
     'users?limit=2',
   ]);
 
+  // Past responses are saved with the history: picking one shows it again, without sending it.
+  const reloadedDrawer = page.getByRole('region', { name: 'API console' });
+  const sentBefore = consoleRequests.length;
+  await history.last().click();
+  await reloadedDrawer.getByText('200 OK').waitFor();
+  await reloadedDrawer.getByText('"ada@acme.com"').waitFor();
+  await history.first().click();
+  await reloadedDrawer
+    .getByRole('alert')
+    .getByText('name: The field cannot be left blank')
+    .waitFor();
+  assert.equal(consoleRequests.length, sentBefore, 'picking from the history sends nothing');
+
   // Suggestions come from the API reference, with IDs from the page filled in.
   const USER = '00u1abcdefghijklmnop';
   await page.goto(`${ORIGIN}/admin/user/profile/view/${USER}#tab-account`);
