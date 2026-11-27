@@ -100,11 +100,16 @@ export function resolveUrl(url: string, origin: string): URL {
   return resolved;
 }
 
-/** A full URL (from a `Link` header or `_links`) as a console URL. */
-export function toConsoleUrl(href: string): string {
-  const parsed = new URL(href, location.origin);
-  const { path, params } = splitUrl(parsed.pathname + parsed.search);
-  return joinUrl(path, params);
+/**
+ * A full URL (from a `Link` header or `_links`) as a console URL. Its query is
+ * really encoded, so a `+` is a space – Okta's next links write
+ * `search=status ne "X"` as `search=status+ne+%22X%22`. (A `+` typed at the
+ * prompt stays a `+`.)
+ */
+export function toConsoleUrl(href: string, origin = location.origin): string {
+  const parsed = new URL(href, origin);
+  const params = [...parsed.searchParams].map(([key, value]) => ({ key, value }));
+  return joinUrl(parsed.pathname, params);
 }
 
 /** Okta checks this token on every request that changes something. */

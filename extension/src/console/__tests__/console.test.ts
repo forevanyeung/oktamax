@@ -5,7 +5,15 @@ import { fillTemplate, pageContext, placeholders } from '../context';
 import { csvFilename, flatten, toCsv } from '../csv';
 import { cell, formatBytes, isTable, oktaError, tableColumns, timeAgo } from '../format';
 import { cursorAt, keyAt, parseJson } from '../jsonDoc';
-import { joinUrl, resolveUrl, splitMethod, splitUrl, stepUpChallenge, stepUpUrl } from '../request';
+import {
+  joinUrl,
+  resolveUrl,
+  splitMethod,
+  splitUrl,
+  stepUpChallenge,
+  stepUpUrl,
+  toConsoleUrl,
+} from '../request';
 import { addToHistory, RESPONSE_LIMIT, savedIds, type HistoryEntry } from '../store';
 import {
   docsUrl,
@@ -38,6 +46,19 @@ describe('request', () => {
     expect(joinUrl(path, params)).toBe(url);
     expect(splitUrl('/x?q=a%26b').params).toEqual([{ key: 'q', value: 'a&b' }]);
     expect(joinUrl('/x', [{ key: 'q', value: 'a&b' }])).toBe('/x?q=a%26b');
+  });
+
+  it("reads a next link's `+` as a space, and sends it that way", () => {
+    const next = toConsoleUrl(
+      `${ORIGIN}/api/v1/users?after=00u2&limit=200&search=status+ne+%22DEPROVISIONED%22`,
+      ORIGIN,
+    );
+    expect(next).toBe('/api/v1/users?after=00u2&limit=200&search=status ne "DEPROVISIONED"');
+    expect(resolveUrl(next, ORIGIN).search).toBe(
+      '?after=00u2&limit=200&search=status%20ne%20%22DEPROVISIONED%22',
+    );
+    // An encoded `+` is still a `+`.
+    expect(toConsoleUrl(`${ORIGIN}/api/v1/users?q=a%2Bb`, ORIGIN)).toBe('/api/v1/users?q=a+b');
   });
 
   it('resolves console URLs against this org', () => {
